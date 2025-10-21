@@ -1,6 +1,6 @@
 from functools import wraps
-
-from jwt import JWT
+from typing import Any
+from flask import request, jsonify
 import jwt
 from hashlib import pbkdf2_hmac
 import dotenv
@@ -13,7 +13,7 @@ dot_env_values = dotenv.dotenv_values()
 __dotenv_values = dotenv.dotenv_values()
 __salt = __dotenv_values["SALT"].encode('ascii')
 __iters = int(__dotenv_values["ITERS"])
-__uri = __dotenv_values["URI"]
+__uri = __dotenv_values["MONGO_URI"]
 
 # Create a new client and connect to the server
 client = MongoClient(__uri)
@@ -21,18 +21,9 @@ client = MongoClient(__uri)
 def create_collection_connection(collection_name: str, database_name : str = "BTDT"):
     return client.get_database(database_name).get_collection(collection_name)
 
-def decode_token(jwt_token : JWT):
-    if "KEY" not in dot_env_values:
-        raise Exception("Missing KEY in .env file")
 
 
-    try:
 
-        data =  JWT.decode(jwt_token, dot_env_values["KEY"], algorithms=["HS256"])
-        return data["user_id"] if "user_id" in data else None
-
-    except:
-        return None
 
 
 def generate_password_hash(password_string: str | None):
@@ -43,48 +34,77 @@ def generate_password_hash(password_string: str | None):
     return pbkdf2_hmac('sha256', password_string.encode('ascii'), __salt, __iters)
 
 
-
-
-
-def get_user(email : str, password_hash : bytes): pass
-
+def create_token() -> jwt.JWT: pass
 
 
 
 
-def create_token() -> JWT:
+def verify_user(func : callable):
+    """
+    A wrapper that only allows access to the function if the correct user permissions from a JWT are given.
 
-    email = request.args.get("email")
-    password = request.args.get("password")
-    hashed_password = generate_password_hash(password)
-
-    user_collection = get_user(email, hashed_password)
+    kwargs added are user_id,user_name session_exp, is_admin, is_verified todo : add more terms as needed
 
 
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print("verifing user")
 
 
-    return JWT()
+
+        token = request.cookies.get('jwt')
+        jwt_values = {}
+
+        if token is None:
+            return jsonify({"message": "Token is missing"}), 401
+
+
+
+        try:
+             jwt_values = (jwt.decode(token, __dotenv_values["JWT_SECRET"]))
+        except jwt.ExpiredSignatureError:
+            return jsonify("Token is expired"), 401
+        except jwt.InvalidTokenError:
+            return jsonify("Token is invalid"), 401
+
+        # todo : verify is the user is valid by asking the db
+
+
+        if "user_id" not in jwt_values:
+            return jsonify("Token is malformed, please login in again. If this problem persists. contact support"), 401
+
+
+        # todo : add to the kwargs
+
+
+        result= func(*args, **kwargs)
+
+
+        # todo : if session expiry is soon, make a new session and return appended to the request, put in try
+
+        return result
+
+
+    return wrapper
+
+
 
 def verify_admin(jwt):
-    is_valid_user, user = verify_user(jwt)
-
-    if not is_valid_user:
-        return False, user
+    """
+    A wrapper that only allows access to the function if the user is an admin.
 
 
-    if not user["is_admin"]:
-        return False, "User is not an admin"
 
 
-def verify_user(jwt):
-    user_id = decode_token(jwt)
+    """
+    # todo : make this function a wrapper with check to see if kwargs[admin] is true
 
-    if user_id is None:
-        return False, "no jwt token or jwt token not valid"
+    ...
 
-    user : dict = get_user(user_id)
 
-    if user["is_deleted"]:
-        return False, "user deleted"
 
-    return True, user
+
+
+
+

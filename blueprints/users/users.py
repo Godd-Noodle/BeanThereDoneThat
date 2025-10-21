@@ -169,7 +169,16 @@ def get_users(*args, **kwargs):
 
 def login(): pass #todo
 
-def logout(): pass
+@auth.verify_user
+def logout(*args, **kwargs):
+    session_datetime = request.args.get('session_exp')
+    user_id = kwargs.get('user_id')
+
+    if session_datetime is None:
+        session_datetime = ...  # this session's datetime from auth
+
+
+    ...
 
 
 def update(): pass  #todo
