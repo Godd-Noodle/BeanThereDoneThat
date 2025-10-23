@@ -62,13 +62,13 @@ def print_first_ten_geo():
 
 
 def main():
-    #create_users(10)
+    create_users(10)
 
     #populate_businesses()
 
     #add_long_lat()
 
-    print_first_ten_geo()
+    #print_first_ten_geo()
 
 
 
@@ -87,12 +87,13 @@ def create_users(user_count : int = 50):
     data = [
         {
         "name" : "Patrick McGurnaghan",
-        "email" : "patrickdmcgurnaghan@gmail.com",
+        "email" : "mcgurnaghan-p1@ulster.ac.uk",
         "dob": datetime(2000, 6,23, tzinfo=tz.tzutc()).replace(microsecond=0,tzinfo=tz.tzutc()),
         "is_admin": 1,
         "is_deleted": 0,
         "verified": 1,
-        "password": passwordify("boogies"),
+        "password": passwordify("password"),
+        "sessions" : []
         }
     ]
 
@@ -100,13 +101,15 @@ def create_users(user_count : int = 50):
     for i in range(10):
         name = fake.name()
         person = {
-        "name" : name,
+        "name" : f"{name}{i}",
         "email" : name.replace(" ",".").lower() + "@fake.com",
         "dob": fake.date_time_between(datetime(1970,1,1),datetime(2000,1,1),tz.tzutc())
             .replace(hour=0,minute=0,second=0,microsecond=0,tzinfo=tz.tzutc()),
         "is_admin": 0,
         "is_deleted": 0,
-        "password": passwordify(name.replace(" ",".").lower()),
+        "password": passwordify(f"password{i}"),
+        "sessions": [],
+        "verified": 1
         }
         data.append(person)
 

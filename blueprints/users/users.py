@@ -1,9 +1,13 @@
+import uuid
+from http.client import responses
+
+import flask
 from bson import ObjectId
 from flask import blueprints, request, make_response, jsonify, Blueprint
 import dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import tz
 import utilities.verify as verify
 import utilities.auth as auth
@@ -167,7 +171,48 @@ def get_users(*args, **kwargs):
 
     return make_response(jsonify({'users': users}), 200)
 
-def login(): pass #todo
+@users_blueprint.route('/login', methods=['POST'])
+def login(*args, **kwargs):
+    expiry_time_days = 30
+
+    user_email = request.authorization.get('username', None)
+
+    password = request.authorization.get('password', None)
+
+    if not  user_email:
+        return make_response(jsonify({'error': 'email not given'}), 401)
+
+    if not password:
+        return make_response(jsonify({'error': 'password not given'}), 401)
+
+    hashed_password : bytes = auth.generate_password_hash(password)
+
+    user_collection : MongoClient = auth.create_collection_connection(collection_name="Users")
+
+    user = user_collection.find_one({"email": user_email}, {"_id": 1, "password":1})
+
+    if user is None:
+        return make_response(jsonify({'error': 'User not found'}), 404)
+
+    if hashed_password != user['password']:
+        return make_response(jsonify({'error': 'invalid password'}), 401)
+
+    session_id = str(uuid.uuid4())
+    cur_time = datetime.now(tz=tz.UTC)
+    payload = {
+        "user_id": str(user['_id']),
+        "session_id": session_id,
+        "exp": datetime.now(tz=tz.UTC) + timedelta(days=expiry_time_days),
+    }
+
+    user_collection.update_one({"_id": ObjectId(user['_id'])}, {"$push": {"sessions": payload}})
+
+    token = auth.create_token(payload=payload)
+
+    if not token:
+        return make_response(jsonify({'error': 'Error making token'}), 500)
+
+    return jsonify({'token': token}), 200
 
 @auth.verify_user
 def logout(*args, **kwargs):
@@ -178,17 +223,38 @@ def logout(*args, **kwargs):
         session_datetime = ...  # this session's datetime from auth
 
 
-    ...
+@auth.verify_user
+def update(): pass #todo
+
+@auth.verify_user
+def deactivate(*args, **kwargs):
+    user_collection = auth.create_collection_connection(collection_name="Users")
+
+    user = user_collection.update_one({"_id": ObjectId(kwargs['user_id'])}, {"$set": {"is_deleted": True, "sessions": []}})
+
+    return jsonify("User has been deactivated"), 200
 
 
-def update(): pass  #todo
-def deactivate(): pass  #todo
-def recover(): pass  #todo
-def delete(): pass  #todo
+
+@auth.verify_admin
+def recover():
+    user_id = request.args.get('user_id')
+
+    user_collection = auth.create_collection_connection(collection_name="Users")
+
+    user = user_collection.update_one({"_id": ObjectId(user_id)}, {"$set": {"is_deleted": False, "sessions": []}})
+
+    return jsonify("User has been reactivated"), 200
 
 
 
 
+@auth.verify_admin
+def delete():
+    user_id = request.args.get('user_id')
 
+    user_collection = auth.create_collection_connection(collection_name="Users")
 
+    user = user_collection.delete_one({"_id": ObjectId(user_id)})
 
+    return jsonify("User has been deleted"), 200

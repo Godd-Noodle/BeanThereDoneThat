@@ -1,7 +1,9 @@
+import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any
 from bson import ObjectId
+from dateutil.tz import tzutc
 from flask import request, jsonify
 import jwt
 from hashlib import pbkdf2_hmac
@@ -32,19 +34,28 @@ def generate_password_hash(password_string: str | None):
     return pbkdf2_hmac('sha256', password_string.encode('ascii'), __salt, __iters)
 
 
+def create_token(payload: dict[str: Any]) -> jwt.PyJWT | None:
+
+    try:
+        token = jwt.encode(payload=payload, key=__salt, algorithm='HS256')
+    except jwt.PyJWTError:
+        return None
+    return token
+
+
+
+
 
 def verify_user(func : callable):
     """
     A wrapper that only allows access to the function if the correct user permissions from a JWT are given.
 
     kwargs added are user_id,name, email, session_exp, is_admin, is_verified
-
-
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
 
-        token = request.cookies.get('jwt')
+        token = request.args.get('jwt')
 
         if token is None:
             return jsonify({"message": "Token is missing"}), 401
@@ -60,7 +71,7 @@ def verify_user(func : callable):
         finally:
             jwt_values = {
                 "user_id": "68f277b7cff87a6e29e75555",
-                "exp": datetime.now() + timedelta(minutes=15)
+                "exp": datetime.now(tz=tzutc()) + timedelta(minutes=15)
             }
 
         if "user_id" not in jwt_values:
@@ -84,7 +95,7 @@ def verify_user(func : callable):
         kwargs["is_admin"] = this_user["is_admin"]
         kwargs["is_verified"] = this_user["verified"]
 
-        result= func(*args, **kwargs)
+        result = func(*args, **kwargs)
 
 
         # todo : if session expiry is soon, make a new session and return appended to the request, put in try
@@ -95,12 +106,13 @@ def verify_user(func : callable):
     return wrapper
 
 
-@verify_user
+
 def verify_admin(func : callable):
     """
     A wrapper that only allows access to the function if the user is an admin.
     kwargs added are user_id,name, email, session_exp, is_admin, is_verified
     """
+    @verify_user
     @wraps(func)
     def wrapper(*args, **kwargs):
 
