@@ -141,7 +141,7 @@ def populate_businesses():
 
 
 
-    print("businesses created from json")
+    print("shops created from json")
 
 
 def add_long_lat():
@@ -191,7 +191,7 @@ def add_long_lat():
         ]
     )
 
-    print("lat and long added to businesses")
+    print("lat and long added to shops")
 
 
 

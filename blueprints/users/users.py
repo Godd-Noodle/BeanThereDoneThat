@@ -1,7 +1,5 @@
 import uuid
-from http.client import responses
 
-import flask
 from bson import ObjectId
 from flask import blueprints, request, make_response, jsonify, Blueprint
 import dotenv
@@ -14,13 +12,6 @@ import utilities.auth as auth
 
 
 users_blueprint = Blueprint('users', __name__)
-
-env_values = dotenv.dotenv_values()
-uri = env_values['MONGO_URI']
-geo_api_key = env_values['GEO_API_KEY']
-
-
-
 
 
 #create user
@@ -58,37 +49,10 @@ def create_user(*args, **kwargs):
     if corrections is not None:
         return make_response(jsonify(corrections), 401)
 
-
-
-
-
-    #create user
+    #create user. todo : create user and return token with session created
     user_collection : MongoClient = auth.create_collection_connection(collection_name="Users")
 
-    year, month, day  = int(_request_args['dob_year']), int(_request_args['dob_month']), int(_request_args['dob_day'])
-    dob = datetime(year, month,day, tzinfo=tz.tzutc()).replace(microsecond=0,tzinfo=tz.tzutc())
-    hashed_password = auth.generate_password_hash(_request_args['password'])
 
-    new_user = {
-        "email": _request_args['email'],
-        "name" : _request_args['name'],
-        "is_admin" : 0,
-        "verified" : 0,
-        "is_deleted" : 0,
-        "password": hashed_password,
-        "DOB": dob,
-        "sessions": []
-    }
-
-
-    result = user_collection.insert_one(new_user)
-
-    _id = result.inserted_id()
-
-    token = auth.create_token()
-
-
-    return jsonify({'jwt_token': token}), 201
 
 @users_blueprint.route('/<user_id>', methods=['GET'])
 def get_user(*args, **kwargs):
@@ -202,7 +166,7 @@ def login(*args, **kwargs):
     payload = {
         "user_id": str(user['_id']),
         "session_id": session_id,
-        "exp": datetime.now(tz=tz.UTC) + timedelta(days=expiry_time_days),
+        "exp": cur_time + timedelta(days=expiry_time_days),
     }
 
     user_collection.update_one({"_id": ObjectId(user['_id'])}, {"$push": {"sessions": payload}})
@@ -216,12 +180,23 @@ def login(*args, **kwargs):
 
 @auth.verify_user
 def logout(*args, **kwargs):
-    session_datetime = request.args.get('session_exp')
+    session_id = request.args.get('session_id')
     user_id = kwargs.get('user_id')
 
-    if session_datetime is None:
-        session_datetime = ...  # this session's datetime from auth
+    if session_id is None:
+        session_id = kwargs.get('session_id')
 
+    # todo : get index of the datetime, and delete that session from the array
+
+    user_collection : MongoClient = auth.create_collection_connection(collection_name="Users")
+    user_collection.update_one(
+        {'_id': user_id},  # Filter for the parent document
+        {
+            '$pull': {
+                'sessions': {'session_id': session_id}
+            }
+        }
+    )
 
 @auth.verify_user
 def update(): pass #todo

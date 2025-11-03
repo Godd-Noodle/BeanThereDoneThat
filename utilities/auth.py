@@ -42,7 +42,7 @@ def create_token(payload: dict[str: Any]) -> jwt.PyJWT | None:
         return None
     return token
 
-
+#todo : write a wrapper that adds a logger to all api calls
 
 
 
@@ -60,19 +60,13 @@ def verify_user(func : callable):
         if token is None:
             return jsonify({"message": "Token is missing"}), 401
 
-        # todo : remove finally expression when token creation and storage is successful
+
         try:
-            ...
-             #jwt_values = jwt.decode(token, __salt)
+            jwt_values = jwt.decode(token, __salt,algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
             return jsonify("Token is expired"), 401
         except jwt.InvalidTokenError:
             return jsonify("Token is invalid"), 401
-        finally:
-            jwt_values = {
-                "user_id": "68f277b7cff87a6e29e75555",
-                "exp": datetime.now(tz=tzutc()) + timedelta(minutes=15)
-            }
 
         if "user_id" not in jwt_values:
             return jsonify("Token is malformed, please login in again. If this problem persists, then contact support"), 401
@@ -119,4 +113,15 @@ def verify_admin(func : callable):
         if not kwargs["is_admin"]:
             return jsonify("User is not admin"), 401
 
+        return func(*args, **kwargs)
+
+
+
+def verify_admin(func : callable):
+    """
+    A wrapper that caches the result of the call with 1 min expiry
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
         return func(*args, **kwargs)

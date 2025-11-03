@@ -1,4 +1,6 @@
 from flask import Flask, jsonify, make_response, request
+
+from blueprints.shops.shops import shops_blueprint
 from blueprints.users.users import users_blueprint
 from utilities.auth import verify_user
 app =  Flask(__name__)
@@ -6,8 +8,9 @@ app =  Flask(__name__)
 
 api_prefix = "/api/1.0"
 app.register_blueprint(users_blueprint, url_prefix=f'{api_prefix}/users')
+app.register_blueprint(shops_blueprint, url_prefix=f'{api_prefix}/shops')
 
-#todo : add businesses, review and comments blueprints
+#todo : add review and comments blueprints
 
 
 @app.route("/", methods=["GET"])
@@ -20,6 +23,23 @@ def index():
 def self(*args, **kwargs):
     token = request.cookies.get('jwt')
     return jsonify(f"User '{token}', you are successfully logged in.", 200)
+
+
+@app.route("/help", methods=["GET"])
+def help(*args, **kwargs):
+    category = request.args.get('category')
+
+    msg = {
+        "category" : "category not found please provide a 'category' in request args to get a list of api endpoints",
+        "options" : ["users", "shops","reviews", "comments"],
+        "root_endpoints" : ["/index", "/self", "/help"],
+    }
+
+
+    return jsonify(msg), 200
+
+
+
 
 
 
