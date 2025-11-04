@@ -58,7 +58,7 @@ def create_token(user_id : str) -> jwt.PyJWT | None:
 
 
 
-def verify_user(func : callable):
+def is_user(func : callable):
     """
     A wrapper that only allows access to the function if the correct user permissions from a JWT are given.
 
@@ -66,7 +66,7 @@ def verify_user(func : callable):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        #get token from authorization section, it doesnt get sent in request
+        #get token from authorization section, it doesn't get sent in request
 
         token = request.authorization.token
 
@@ -145,12 +145,12 @@ def verify_user(func : callable):
 
 
 
-def verify_admin(func : callable):
+def is_admin(func : callable):
     """
     A wrapper that only allows access to the function if the user is an admin.
     kwargs added are user_id,name, email, session_exp, is_admin, is_verified
     """
-    @verify_user
+    @is_user
     @wraps(func)
     def wrapper(*args, **kwargs):
 
