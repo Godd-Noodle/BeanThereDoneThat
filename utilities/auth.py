@@ -67,8 +67,11 @@ def verify_user(func : callable):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
+        #get token from authorization section, it doesnt get sent in request
 
-        token = request.args.get('jwt')
+        token = request.authorization.token
+
+        #token = request.args.get('jwt')
 
         if token is None:
             return jsonify({"message": "Token is missing"}), 401
@@ -110,7 +113,7 @@ def verify_user(func : callable):
 
 
 
-
+        #checks if date to token expiry is close and if so it issues a new token
         if datetime.now() + timedelta(days=7) >= kwargs["session_exp"]:
 
             try:
@@ -127,7 +130,7 @@ def verify_user(func : callable):
 
                 result = jsonify(response_data)
 
-
+                #removes old session id
                 result = user_collection.update_one(
                     {'_id': ObjectId(kwargs["user_id"])},
                     {'$pull': {'sessions': {'session_id': jwt_values["session_id"]}}}

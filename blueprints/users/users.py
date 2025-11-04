@@ -230,3 +230,29 @@ def delete():
     #todo : deactivate shops related to this user and remove the user from the owner field
 
     return jsonify("User has been deleted"), 200
+
+@auth.verify_user
+@users_blueprint.route('/revoke_sessions', methods=['DELETE'])
+def revoke_sessions(*args, **kwargs):
+    user_id = kwargs.get('user_id')
+
+    session_id = kwargs.get('session_id', str)
+
+
+    user_collection = auth.create_collection_connection(collection_name="Users")
+
+    if session_id is None:
+        result = user_collection.update_one({"_id": ObjectId(user_id)}, {"sessions" : []})
+
+    else:
+        result = user_collection.update_one(
+            {'_id': ObjectId(kwargs["user_id"])},
+            {'$pull': {'sessions': {'session_id': session_id}}}
+        )
+
+    if result.matched_count == 0:
+        return make_response(jsonify({'error': 'no sessions deleted'}), 404)
+    else:
+        return jsonify({"session(s) has been revoked"}), 200
+
+
