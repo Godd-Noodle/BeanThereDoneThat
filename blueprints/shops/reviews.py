@@ -245,7 +245,7 @@ def dislike_review(*args, **kwargs):
     return jsonify({"message": "Like removed successfully"}), 200
 
 
-def update_review(): pass#todo
+
 def delete_review(): pass#todo
 
 #creating a new review will soft-delete the old review
