@@ -3,7 +3,7 @@ from flask import Flask, jsonify, make_response, request
 from blueprints.shops.reviews import reviews_blueprint
 from blueprints.shops.shops import shops_blueprint
 from blueprints.users.users import users_blueprint
-from utilities.auth import verify_user
+from utilities.auth import is_user
 app =  Flask(__name__)
 
 
@@ -24,7 +24,7 @@ def index():
 
 
 @app.route("/self", methods=["GET"])
-@verify_user
+@is_user
 def self(*args, **kwargs):
     token = request.cookies.get('jwt')
     return jsonify(f"User '{token}', you are successfully logged in.", 200)
