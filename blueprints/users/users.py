@@ -80,7 +80,7 @@ def get_user(*args, **kwargs):
 
     return jsonify(user), 200
 
-@auth.verify_admin
+@auth.is_admin
 @users_blueprint.route('/', methods=['GET'])
 def get_users(*args, **kwargs):
 
@@ -166,7 +166,7 @@ def login(*args, **kwargs):
 
     return jsonify({'token': token}), 200
 
-@auth.verify_user
+@auth.is_user
 def logout(*args, **kwargs):
     session_id = request.args.get('session_id')
     user_id = kwargs.get('user_id')
@@ -186,10 +186,10 @@ def logout(*args, **kwargs):
         }
     )
 
-@auth.verify_user
+@auth.is_user
 def update(): pass #todo
 
-@auth.verify_user
+@auth.is_user
 def deactivate(*args, **kwargs):
     user_collection = auth.create_collection_connection(collection_name="Users")
 
@@ -204,7 +204,7 @@ def deactivate(*args, **kwargs):
 
 
 
-@auth.verify_admin
+@auth.is_admin
 def recover():
     user_id = request.args.get('user_id')
 
@@ -219,7 +219,7 @@ def recover():
 
 
 
-@auth.verify_admin
+@auth.is_admin
 def delete():
     user_id = request.args.get('user_id')
 
@@ -231,7 +231,7 @@ def delete():
 
     return jsonify("User has been deleted"), 200
 
-@auth.verify_user
+@auth.is_user
 @users_blueprint.route('/revoke_sessions', methods=['DELETE'])
 def revoke_sessions(*args, **kwargs):
     user_id = kwargs.get('user_id')
