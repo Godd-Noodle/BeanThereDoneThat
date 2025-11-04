@@ -80,10 +80,40 @@ def check_name(names: [str]) -> list[str]:
 
     return corrections
 
+def check_review(message: str) -> list[str]:
+
+    corrections = []
+
+    if not message:
+        return ["message cannot be empty"]
+
+    if len(message) < 3:
+        corrections.append("Message must be at least 3 characters long")
+
+    if len(message) > 50:
+        corrections.append("Message must be at most 50 characters long")
 
 
 
+    return corrections
 
+def check_review_score(score: str) -> list[str]:
+
+    corrections = []
+
+    if not score:
+        return ["Review score must not be empty"]
+
+    if not score.isdigit():
+        return ["Review score must be an integer"]
+
+    if int(score) < 1:
+        corrections.append("Review score must be at least 1")
+
+    if int(score) > 5:
+        corrections.append("Review score must be at most 5")
+
+    return corrections
 
 
 
