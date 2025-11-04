@@ -17,7 +17,7 @@ users_blueprint = Blueprint('users', __name__)
 #create user
 @users_blueprint.route('/create', methods=['POST'])
 def create_user(*args, **kwargs):
-    #get arguments
+    #todo : all wrong , copy the create business stuff
 
     _request_args = {}
 
@@ -137,8 +137,6 @@ def get_users(*args, **kwargs):
 
 @users_blueprint.route('/login', methods=['POST'])
 def login(*args, **kwargs):
-    expiry_time_days = 30
-
     user_email = request.authorization.get('username', None)
 
     password = request.authorization.get('password', None)
@@ -161,17 +159,7 @@ def login(*args, **kwargs):
     if hashed_password != user['password']:
         return make_response(jsonify({'error': 'invalid password'}), 401)
 
-    session_id = str(uuid.uuid4())
-    cur_time = datetime.now(tz=tz.UTC)
-    payload = {
-        "user_id": str(user['_id']),
-        "session_id": session_id,
-        "exp": cur_time + timedelta(days=expiry_time_days),
-    }
-
-    user_collection.update_one({"_id": ObjectId(user['_id'])}, {"$push": {"sessions": payload}})
-
-    token = auth.create_token(payload=payload)
+    token = auth.create_token(str(user["_id"]))
 
     if not token:
         return make_response(jsonify({'error': 'Error making token'}), 500)
@@ -207,6 +195,11 @@ def deactivate(*args, **kwargs):
 
     user = user_collection.update_one({"_id": ObjectId(kwargs['user_id'])}, {"$set": {"is_deleted": True, "sessions": []}})
 
+
+    #todo : deactivate all shops related to this user
+
+
+
     return jsonify("User has been deactivated"), 200
 
 
@@ -218,6 +211,8 @@ def recover():
     user_collection = auth.create_collection_connection(collection_name="Users")
 
     user = user_collection.update_one({"_id": ObjectId(user_id)}, {"$set": {"is_deleted": False, "sessions": []}})
+
+    # todo : reactivate all shops related to this user
 
     return jsonify("User has been reactivated"), 200
 
@@ -231,5 +226,7 @@ def delete():
     user_collection = auth.create_collection_connection(collection_name="Users")
 
     user = user_collection.delete_one({"_id": ObjectId(user_id)})
+
+    #todo : deactivate shops related to this user and remove the user from the owner field
 
     return jsonify("User has been deleted"), 200

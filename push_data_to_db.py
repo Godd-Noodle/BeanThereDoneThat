@@ -207,4 +207,8 @@ def passwordify(psswrd: str):
 
 if __name__ == '__main__':
 
-    main()
+    i = input("type 'y' to migrate db")
+
+    if i == "y":
+
+        main()

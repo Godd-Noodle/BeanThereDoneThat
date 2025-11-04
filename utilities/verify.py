@@ -3,6 +3,10 @@ from datetime import datetime,timedelta
 from utilities.auth import generate_password_hash
 
 
+#google package for checking phonenumbers
+import phonenumbers
+
+
 
 
 
@@ -26,6 +30,33 @@ def check_password(password : str, current_user_password : str = None) -> list[s
 
     return corrections
 
+def check_location(lat : str, long : str):
+    corrections = []
+    if not lat or not long:
+        corrections.append("Latitude and longitude must both be specified")
+
+    try:
+        lat = float(lat)
+
+        if lat <= -90 or lat >= 90:
+            corrections.append("Latitude is not between -90 and 90")
+
+    except ValueError:
+        corrections.append("Latitude is not valid")
+
+
+    try:
+        long = float(long)
+
+        if long <= -180 or long >= 180:
+            corrections.append("Longitude is not valid")
+
+    except ValueError:
+        corrections.append("Longitude is not between -180 and 180")
+
+
+
+    return corrections
 
 
 def check_name(names: [str]) -> list[str]:
@@ -109,3 +140,8 @@ def check_dob(year: int | str, month : int | str, day: int | str) ->  str | list
 
     if datetime(year, month, day) + timedelta(weeks=56*13) > datetime.now().date():
         return "User is too young to use this application"
+
+
+def check_phone_number(phone : str) -> str | list[str]:
+    if not phonenumbers.is_valid_number(phonenumbers.parse(phone)):
+        return "Invalid phone number"

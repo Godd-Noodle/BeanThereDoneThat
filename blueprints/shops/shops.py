@@ -20,7 +20,8 @@ def create_shop(*args,**kwargs):
 
     owner_id = user_id
     title = request.args.get('title')
-    location = request.args.get('location')
+    lat = request.args.get('latitude')
+    long = request.args.get('longitude')
     website = request.args.get('website')
     phone = request.args.get('phone')
     street = request.args.get('street')
@@ -34,22 +35,51 @@ def create_shop(*args,**kwargs):
 
 
     #todo : verify fields
-    
-    
-    
-    shop = {
-        "title" : title,
-        "location" : location,
-        "website" : website,
-        "phone" : phone,
+
+    corrections = []
+
+    #required fields
+    shop={
+        "owner_id": owner_id,
+        "title": title,
         "street" : street,
         "city" : city,
-        "categoryName" : category,
-        "owner_id" : owner_id,
-        "reviews": [],
-        "deleted": False
-        
+        "reviews" : [],
+        "photo" : None,
+        "deleted": False,
     }
+
+    #verification of required fields
+    corrections.append(verify.check_name(title))
+    corrections.append(verify.check_name(street))
+    corrections.append(verify.check_name(city))
+
+    #verification of desired fields if they are present in the request
+    if lat or long:
+        corrections.append(verify.check_location(lat, long))
+        shop["location"] = {"type" : "Point", "coordinates": [float(long), float(lat)]}
+
+    if website:
+        corrections.append(verify.check_name(website))
+        shop["website"] = website
+
+    if phone:
+        corrections.append(verify.check_phone_number(phone))
+        shop["phone"] = phone
+
+
+    if category:
+
+        if category not in get_types_of_shop():
+            corrections.append("Not a valid category")
+
+        shop["categoryName"] = category
+
+
+    if corrections:
+        return jsonify(corrections),400
+
+
 
     #push shop to db
 
@@ -73,7 +103,7 @@ def get_shops(*args,**kwargs):
         "street" : 1,
         "city" : 1,
         "categoryName" : 1,
-        "reviews" : 0 # change this to an agregate of review score
+        "reviews" : 0 # change this to an aggregate of review score
 
     }
 
@@ -155,7 +185,7 @@ def update_photo(shop_id: str, *args, **kwargs):
 
     # Save to bytes
     img_io = io.BytesIO()
-    photo_jpeg.save(img_io, format='JPEG', quality=90)
+    photo_jpeg.save(img_io, format='JPEG', quality=10)
     photo_bytes = img_io.getvalue()
 
     shop_collection = auth.create_collection_connection("Shops")
@@ -193,12 +223,92 @@ def get_photo(shop_id: str):
 
 
 
-def update_shop(): pass#todo
-def delete_shop(): pass#todo
-def deactivate_shop(): pass#todo
-def recover_shop(): pass #todo
+def update_shop():
+    pass # todo : copy shops update
+
+@auth.verify_admin
+@shops_blueprint.route("/<shop_id>/delete", methods=['DELETE'])
+def delete_shop(shop_id: str, *args,**kwargs):
+
+    title = request.args.get('title')
+
+
+    shop_collection = auth.create_collection_connection("Shops")
+
+    shop = shop_collection.find_one({"_id": ObjectId(shop_id)})
+    if shop is None:
+        return jsonify({"error": "shop not found"}), 404
+
+    if not shop["title"] == title:
+        return jsonify({"error": "title doesnt match title of shop in args, shop not deleted"}), 400
+
+    deleted_count = shop_collection.delete_one({"_id": ObjectId(shop_id)})
+
+    if deleted_count == 0:
+        return jsonify({"error": "shop not deleted"}), 500
+
+    return jsonify({"message": f"shop '{title}' deleted successfully"}), 200
+
+
+
+
+@auth.verify_user
+@shops_blueprint.route("/<shop_id>/deactivate", methods=['DELETE'])
+def deactivate_shop(shop_id: str, *args,**kwargs):
+    user_id = kwargs["user_id"]
+
+    shop_collection = auth.create_collection_connection("Shops")
+
+    shop = shop_collection.find_one({"_id": ObjectId(shop_id)})
+
+    if shop is None:
+        return jsonify({"error": "shop not found"}), 404
+
+    if not shop["owner_id"] == user_id:
+        return jsonify({"error": "user_id doesnt match shop owner_id"}), 400
+
+    deleted_count = shop_collection.update_one({"_id": ObjectId(shop_id)},{"$set": {"deleted": True}})
+
+    if deleted_count == 0:
+        return jsonify({"error": "shop not deleted"}), 500
+
+    return jsonify({"message": f"shop '{shop["title"]}' deleted successfully"}), 200
+
+@auth.verify_admin
+def reactive_shop(shop_id: str, *args,**kwargs):
+    new_owner_id = request.args.get('new_owner_id')
+
+    shop_collection = auth.create_collection_connection("Shops")
+
+    shop = shop_collection.find_one({"_id": ObjectId(shop_id)})
+
+    if shop is None:
+        return jsonify({"error": "shop not found"}), 404
+
+
+    if not shop["deleted"]:
+        return jsonify({"error": "shop is not currently deleted"}), 400
+
+    if new_owner_id is None:
+        new_owner_id = shop["owner_id"]
+
+    changed_values = {
+        "owner_id": new_owner_id,
+        "deleted": False
+    }
+
+    updated_count = shop_collection.update_one({"_id": ObjectId(shop_id)}, {"$set": changed_values})
+
+    if updated_count == 0:
+        return jsonify({"error": "shop not found"}), 500
+
+    return jsonify({"message": f"shop '{shop["title"]}' reactivated successfully"}), 200
+
 
 @shops_blueprint.route('/get_types', methods=['GET'])
+def get_types():
+    return get_types_of_shop()
+
 def get_types_of_shop():
 
     #will be useful for a dropdown on the frontend for selecting types

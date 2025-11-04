@@ -3,8 +3,10 @@ from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any
 from bson import ObjectId
-from dateutil.tz import tzutc
-from flask import request, jsonify
+from dateutil import tz
+from flask import request, jsonify, Response
+
+
 import jwt
 from hashlib import pbkdf2_hmac
 import dotenv
@@ -34,7 +36,18 @@ def generate_password_hash(password_string: str | None):
     return pbkdf2_hmac('sha256', password_string.encode('ascii'), __salt, __iters)
 
 
-def create_token(payload: dict[str: Any]) -> jwt.PyJWT | None:
+def create_token(user_id : str) -> jwt.PyJWT | None:
+    user_collection = create_collection_connection("users")
+
+    session_id = str(uuid.uuid4())
+    cur_time = datetime.now(tz=tz.UTC)
+    payload = {
+        "user_id": str(user_id),
+        "session_id": session_id,
+        "exp": cur_time + timedelta(days=30),
+    }
+
+    user_collection.update_one({"_id": ObjectId(user_id)}, {"$push": {"sessions": payload}})
 
     try:
         token = jwt.encode(payload=payload, key=__salt, algorithm='HS256')
@@ -42,7 +55,7 @@ def create_token(payload: dict[str: Any]) -> jwt.PyJWT | None:
         return None
     return token
 
-#todo : write a wrapper that adds a logger to all api calls
+
 
 
 
@@ -72,7 +85,11 @@ def verify_user(func : callable):
             return jsonify("Token is malformed, please login in again. If this problem persists, then contact support"), 401
 
         user_collection = create_collection_connection("Users")
-        this_user = user_collection.find_one({"_id" : ObjectId(jwt_values["user_id"])})
+
+        this_user = user_collection.find_one({
+            '_id': ObjectId(jwt_values["user_id"]),
+            'sessions.session_id': jwt_values["session_id"]
+            })
 
         if this_user is None or this_user["is_deleted"]:
             return jsonify("User not found from JWT. Perhaps the account has been deleted"), 401
@@ -85,14 +102,39 @@ def verify_user(func : callable):
         kwargs["user_id"] = jwt_values["user_id"]
         kwargs["name"] = this_user["name"]
         kwargs["user_email"] = this_user["email"]
-        kwargs["session_exp"] = jwt_values["exp"]
+        kwargs["session_exp"] = datetime.fromtimestamp(jwt_values["exp"])
         kwargs["is_admin"] = this_user["is_admin"]
         kwargs["is_verified"] = this_user["verified"]
 
         result = func(*args, **kwargs)
 
 
-        # todo : if session expiry is soon, make a new session and return appended to the request, put in try
+
+
+        if datetime.now() + timedelta(days=7) >= kwargs["session_exp"]:
+
+            try:
+
+
+                token = create_token(kwargs["user_id"])
+
+
+                response: Response = result[0]
+
+                response_data = eval(response.get_data())
+
+                response_data["token"] = token
+
+                result = jsonify(response_data)
+
+
+                result = user_collection.update_one(
+                    {'_id': ObjectId(kwargs["user_id"])},
+                    {'$pull': {'sessions': {'session_id': jwt_values["session_id"]}}}
+                )
+
+            except:
+                return result
 
         return result
 
@@ -113,15 +155,4 @@ def verify_admin(func : callable):
         if not kwargs["is_admin"]:
             return jsonify("User is not admin"), 401
 
-        return func(*args, **kwargs)
-
-
-
-def verify_admin(func : callable):
-    """
-    A wrapper that caches the result of the call with 1 min expiry
-    """
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
         return func(*args, **kwargs)

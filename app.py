@@ -35,7 +35,7 @@ def help(*args, **kwargs):
         "root_endpoints" : ["/index", "/self", "/help"],
     }
 
-
+    #todo : build the rest ofthe help mesasges
     return jsonify(msg), 200
 
 
