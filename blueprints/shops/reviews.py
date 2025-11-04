@@ -99,7 +99,86 @@ def upsert_review(*args,**kwargs):
     return jsonify({"message": f"Review {return_message} successfully"}), 200
 
 
-def get_reviews(): pass#todo
+@reviews_blueprint.route("/", methods=['GET'])
+def get_reviews():
+    shop_id = request.args.get('shop_id')
+    user_id = request.args.get('user_id')
+    min_score = request.args.get('min_score')
+    max_score = request.args.get('max_score')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 10))
+
+    if not shop_id:
+        return jsonify({"error": "shop_id is required"}), 400
+
+    shops_collection = auth.create_collection_connection("Shops")
+
+    # Build match conditions for reviews
+    review_match = {"$eq": ["$$review.deleted", 0]}
+
+    if user_id:
+        review_match = {
+            "$and": [
+                review_match,
+                {"$eq": ["$$review.user_id", ObjectId(user_id)]}
+            ]
+        }
+
+    if min_score:
+        review_match = {
+            "$and": [
+                review_match if isinstance(review_match, dict) and "$and" in review_match else review_match,
+                {"$gte": ["$$review.score", int(min_score)]}
+            ]
+        }
+
+    if max_score:
+        review_match = {
+            "$and": [
+                review_match if isinstance(review_match, dict) and "$and" in review_match else review_match,
+                {"$lte": ["$$review.score", int(max_score)]}
+            ]
+        }
+
+    pipeline = [
+        {"$match": {"_id": ObjectId(shop_id), "deleted": False}},
+        {
+            "$project": {
+                "reviews": {
+                    "$filter": {
+                        "input": "$reviews",
+                        "as": "review",
+                        "cond": review_match
+                    }
+                }
+            }
+        },
+        {"$unwind": "$reviews"},
+        {
+            "$addFields": {
+                "reviews.like_count": {"$size": {"$objectToArray": "$reviews.likes"}}
+            }
+        },
+        {"$sort": {"reviews.like_count": -1, "reviews.date_created": -1}},
+        {"$skip": (page - 1) * per_page},
+        {"$limit": per_page},
+        {
+            "$project": {
+                "_id": 0,
+                "review": "$reviews"
+            }
+        }
+    ]
+
+    reviews = list(shops_collection.aggregate(pipeline))
+
+    return jsonify({
+        "reviews": [r['review'] for r in reviews],
+        "page": page,
+        "per_page": per_page
+    }), 200
+
+
 def like_review(): pass#todo
 def dislike_review(): pass#todo
 def update_review(): pass#todo
