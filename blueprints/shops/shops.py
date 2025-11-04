@@ -10,8 +10,8 @@ shops_blueprint = Blueprint('shops', __name__)
 
 
 
-@auth.verify_user
-@shops_blueprint.route('/create', methods=['POST'])
+@auth.is_user
+@shops_blueprint.route('/', methods=['POST'])
 def create_shop(*args,**kwargs):
     user_id = kwargs.get('user_id')
     is_admin = kwargs.get('is_admin')
@@ -91,24 +91,8 @@ def create_shop(*args,**kwargs):
 
     return jsonify({"shop_id" : shop_id}), 200
 
-@shops_blueprint.route('', methods=['GET'])
+@shops_blueprint.route('/', methods=['GET'])
 def get_shops(*args,**kwargs):
-
-    projection_fields = {
-        "_id" : 1,
-        "title" : 1,
-        "location" : 0,
-        "website" : 1,
-        "phone" : 1,
-        "street" : 1,
-        "city" : 1,
-        "categoryName" : 1,
-        "reviews" : 0 # change this to an aggregate of review score
-
-    }
-
-
-
 
     #pagination
     per_page = int(request.args.get('per_page',20))
@@ -137,8 +121,25 @@ def get_shops(*args,**kwargs):
     if filtered_shop_count < offset:
         return jsonify({"corrections " : "pagination offset is greater than that of the filtered results"}), 404
 
+    pipeline = [
+    {"$match": filters},
+    {"$skip": offset},
+    {"$limit": per_page},
+    {
+        "$project": {
+            "_id": 1,
+            "title": 1,
+            "website": 1,
+            "phone": 1,
+            "street": 1,
+            "city": 1,
+            "categoryName": 1,
+            "avgScore": {"$avg": "$reviews.score"}  # Adjust field name as needed
+        }
+    }
+]
 
-    shops = list(shop_collection.find(filters, {},skip=offset, limit=per_page))
+    shops = list(shop_collection.aggregate(pipeline))
 
     if len(shops) == 0:
         return jsonify({"error " : "no shops found"}), 404
@@ -170,7 +171,7 @@ def get_shop(shop_id : str,*args,**kwargs):
 
 
 @shops_blueprint.route("/<shop_id>/photo", methods=['PUT'])
-@auth.verify_user
+@auth.is_user
 def update_photo(shop_id: str, *args, **kwargs):
     photo = request.files.get('photo')
 
@@ -226,7 +227,7 @@ def get_photo(shop_id: str):
 def update_shop():
     pass # todo : copy shops update
 
-@auth.verify_admin
+@auth.is_admin
 @shops_blueprint.route("/<shop_id>/delete", methods=['DELETE'])
 def delete_shop(shop_id: str, *args,**kwargs):
 
@@ -252,7 +253,7 @@ def delete_shop(shop_id: str, *args,**kwargs):
 
 
 
-@auth.verify_user
+@auth.is_user
 @shops_blueprint.route("/<shop_id>/deactivate", methods=['DELETE'])
 def deactivate_shop(shop_id: str, *args,**kwargs):
     user_id = kwargs["user_id"]
@@ -274,7 +275,7 @@ def deactivate_shop(shop_id: str, *args,**kwargs):
 
     return jsonify({"message": f"shop '{shop["title"]}' deleted successfully"}), 200
 
-@auth.verify_admin
+@auth.is_admin
 def reactive_shop(shop_id: str, *args,**kwargs):
     new_owner_id = request.args.get('new_owner_id')
 
