@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any
 from bson import ObjectId
 from dateutil import tz
 from flask import request, jsonify, Response

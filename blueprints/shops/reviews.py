@@ -1,7 +1,27 @@
 import datetime
 from flask import Blueprint, request, jsonify
+from utilities import auth
 
-def create_review(): pass#todo
+reviews_blueprint = Blueprint('reviews', __name__)
+
+
+
+
+
+@auth.verify_user
+#add path todo
+def create_review():
+    #get args
+
+    #valideate args
+
+    #push to db
+
+
+    #return message to user
+    return jsonify({"message" : "review created successfully"}), 200
+
+
 def get_reviews(): pass#todo
 def like_review(): pass#todo
 def dislike_review(): pass#todo
