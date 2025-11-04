@@ -245,8 +245,33 @@ def dislike_review(*args, **kwargs):
     return jsonify({"message": "Like removed successfully"}), 200
 
 
+@reviews_blueprint.route("/", methods=['DELETE'])
+@auth.is_user
+def delete_review(*args, **kwargs):
+    user_id = kwargs.get('user_id')
+    shop_id = request.args.get('shop_id')
 
-def delete_review(): pass#todo
+    if not shop_id:
+        return jsonify({"error": "shop_id is required"}), 400
+
+    shops_collection = auth.create_collection_connection("Shops")
+
+    # Soft delete review
+    result = shops_collection.update_one(
+        {
+            "_id": ObjectId(shop_id),
+            "reviews.user_id": ObjectId(user_id),
+            "reviews.deleted": 0
+        },
+        {
+            "$set": {"reviews.$.deleted": 1}
+        }
+    )
+
+    if result.modified_count == 0:
+        return jsonify({"error": "Review not found"}), 404
+
+    return jsonify({"message": "Review deleted successfully"}), 200
 
 #creating a new review will soft-delete the old review
 #filter with star ranges and always order by like count
