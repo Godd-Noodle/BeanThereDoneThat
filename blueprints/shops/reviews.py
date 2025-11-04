@@ -179,7 +179,39 @@ def get_reviews():
     }), 200
 
 
-def like_review(): pass#todo
+@reviews_blueprint.route("/like", methods=['POST'])
+@auth.is_user
+def like_review(*args, **kwargs):
+    user_id = kwargs.get('user_id')
+    shop_id = request.args.get('shop_id')
+    review_user_id = request.args.get('review_user_id')
+
+    if not shop_id or not review_user_id:
+        return jsonify({"error": "shop_id and review_user_id are required"}), 400
+
+    shops_collection = auth.create_collection_connection("Shops")
+
+    # Add like (using user_id as key in likes object)
+    result = shops_collection.update_one(
+        {
+            "_id": ObjectId(shop_id),
+            "reviews.user_id": ObjectId(review_user_id),
+            "reviews.deleted": 0
+        },
+        {
+            "$set": {
+                f"reviews.$[review].likes.{user_id}": 1
+            }
+        },
+        array_filters=[{"review.user_id": ObjectId(review_user_id), "review.deleted": 0}]
+    )
+
+    if result.modified_count == 0:
+        return jsonify({"error": "Review not found or already liked"}), 404
+
+    return jsonify({"message": "Review liked successfully"}), 200
+
+
 def dislike_review(): pass#todo
 def update_review(): pass#todo
 def delete_review(): pass#todo
