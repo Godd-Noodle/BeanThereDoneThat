@@ -12,8 +12,6 @@ app.register_blueprint(users_blueprint, url_prefix=f'{api_prefix}/users')
 app.register_blueprint(shops_blueprint, url_prefix=f'{api_prefix}/shops')
 app.register_blueprint(reviews_blueprint, url_prefix=f'{api_prefix}/reviews')
 
-#todo : add comment blueprint
-
 # todo : review each jsonify in all files to make such it is a valid dictionary inputted
 # this is needed because of the auth.user method appending a new token on conditions
 
