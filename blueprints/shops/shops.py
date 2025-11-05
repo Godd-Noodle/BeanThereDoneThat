@@ -1,5 +1,4 @@
 import io
-
 from bson import ObjectId
 from flask import blueprints, request, make_response, jsonify, Blueprint, send_file
 import utilities.verify as verify
@@ -9,9 +8,8 @@ from PIL import Image
 shops_blueprint = Blueprint('shops', __name__)
 
 
-
-@auth.is_user
 @shops_blueprint.route('/', methods=['POST'])
+@auth.is_user
 def create_shop(*args,**kwargs):
     user_id = kwargs.get('user_id')
     is_admin = kwargs.get('is_admin')
@@ -233,7 +231,29 @@ def get_photo(shop_id: str):
         mimetype='image/jpeg'
     )
 
+@shops_blueprint.route("/<shop_id>/photo", methods=['DELETE'])
+@auth.is_user
+def delete_photo(shop_id: str, *args, **kwargs):
+    shop_collection = auth.create_collection_connection("Shops")
 
+    shop = shop_collection.find_one({"_id": ObjectId(shop_id)})
+
+    if shop is None:
+        return jsonify({"error": "shop not found"}), 404
+
+    if shop.get("owner_id") != kwargs["user_id"] and not kwargs["is_admin"]:
+        return jsonify({"error": "You are not allowed to update this shop"}), 403
+
+    if "photo" not in shop:
+        return jsonify({"error": "No photo to delete"}), 404
+
+    # Remove the photo field
+    shop_collection.update_one(
+        {"_id": ObjectId(shop_id)},
+        {"$unset": {"photo": ""}}
+    )
+
+    return jsonify({"message": "Photo deleted successfully"}), 200
 
 def update_shop():
     pass # todo : copy shops update
@@ -260,9 +280,6 @@ def delete_shop(shop_id: str, *args,**kwargs):
         return jsonify({"error": "shop not deleted"}), 500
 
     return jsonify({"message": f"shop '{title}' deleted successfully"}), 200
-
-
-
 
 @auth.is_user
 @shops_blueprint.route("/<shop_id>/deactivate", methods=['DELETE'])
