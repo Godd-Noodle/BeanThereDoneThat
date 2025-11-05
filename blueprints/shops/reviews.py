@@ -6,7 +6,7 @@ from utilities import auth, verify
 reviews_blueprint = Blueprint('reviews', __name__)
 
 
-@reviews_blueprint.route("/", methods=['POST','PUT'])
+@reviews_blueprint.route("/", methods=['POST','PUT']) # does both creation and update
 @auth.is_user
 def upsert_review(*args,**kwargs):
     user_id = kwargs.get('user_id')
@@ -35,7 +35,7 @@ def upsert_review(*args,**kwargs):
 
     # Check if review exists
     review_from_shop = shops_collection.find_one(
-        {"_id": ObjectId(shop_id), "deleted": False, "reviews.user_id": ObjectId(user_id)},
+        {"_id": ObjectId(shop_id), "deleted": False, "reviews.user_id": ObjectId(user_id), "reviews.deleted": False},
         {"_id": 1, "reviews.$": 1}
     )
 
@@ -47,8 +47,8 @@ def upsert_review(*args,**kwargs):
 
         # Soft delete old review
         shops_collection.update_one(
-            {"_id": ObjectId(shop_id), "reviews.user_id": ObjectId(user_id)},
-            {"$set": {"reviews.$.deleted": 1}}
+            {"_id": ObjectId(shop_id), "reviews.user_id": ObjectId(user_id), "reviews.deleted": False},
+            {"$set": {"reviews.$.deleted": True}}
         )
 
         # Create new review with edit history
@@ -65,7 +65,7 @@ def upsert_review(*args,**kwargs):
             }],
             "comments": old_review.get('comments', []),
             "likes": old_review.get('likes', {}),
-            "deleted": 0,
+            "deleted": False,
             "photo": old_review.get('photo'),
         }
 
@@ -85,7 +85,7 @@ def upsert_review(*args,**kwargs):
             "edits": [],
             "comments": [],
             "likes": {},
-            "deleted": 0,
+            "deleted": False,
             "photo": None,
         }
 
@@ -102,8 +102,8 @@ def upsert_review(*args,**kwargs):
 def get_reviews():
     shop_id = request.args.get('shop_id')
     user_id = request.args.get('user_id')
-    min_score = request.args.get('min_score')
-    max_score = request.args.get('max_score')
+    min_score = request.args.get('min_score',1,int)
+    max_score = request.args.get('max_score',5,int)
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 10))
 
@@ -192,23 +192,23 @@ def like_review(*args, **kwargs):
 
     shops_collection = auth.create_collection_connection("Shops")
 
-    # Add like (using user_id as key in likes object)
+    # Add like (using $addToSet to prevent duplicates)
     result = shops_collection.update_one(
         {
             "_id": ObjectId(shop_id),
             "reviews.user_id": ObjectId(review_user_id),
-            "reviews.deleted": 0
+            "reviews.deleted": False
         },
         {
-            "$set": {
-                f"reviews.$[review].likes.{user_id}": 1
+            "$addToSet": {
+                "reviews.$[review].likes": ObjectId(user_id)
             }
         },
-        array_filters=[{"review.user_id": ObjectId(review_user_id), "review.deleted": 0}]
+        array_filters=[{"review.user_id": ObjectId(review_user_id), "review.deleted": False}]
     )
 
-    if result.modified_count == 0:
-        return jsonify({"error": "Review not found or already liked"}), 404
+    if result.matched_count == 0:
+        return jsonify({"error": "Review not found"}), 404
 
     return jsonify({"message": "Review liked successfully"}), 200
 
@@ -230,14 +230,14 @@ def dislike_review(*args, **kwargs):
         {
             "_id": ObjectId(shop_id),
             "reviews.user_id": ObjectId(review_user_id),
-            "reviews.deleted": 0
+            "reviews.deleted": False
         },
         {
-            "$unset": {
-                f"reviews.$[review].likes.{user_id}": ""
+            "$pull": {
+                "reviews.$[review].likes": ObjectId(user_id)
             }
         },
-        array_filters=[{"review.user_id": ObjectId(review_user_id), "review.deleted": 0}]
+        array_filters=[{"review.user_id": ObjectId(review_user_id), "review.deleted": False}]
     )
 
     if result.modified_count == 0:
