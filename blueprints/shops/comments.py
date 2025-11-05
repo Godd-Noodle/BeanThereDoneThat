@@ -10,7 +10,7 @@ def delete_comment(): pass#todo
 structure = {
     "user_id",
     "message",
-    "date_created",
+    "time_created",
     "edits",
     "likes",
     "deleted"
