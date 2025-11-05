@@ -134,7 +134,7 @@ def get_shops(*args,**kwargs):
             "street": 1,
             "city": 1,
             "categoryName": 1,
-            "avgScore": {"$avg": "$reviews.score"}  # Adjust field name as needed
+            "avgScore": {"$avg": "$reviews.score"}
         }
     }
 ]
@@ -153,20 +153,31 @@ def get_shops(*args,**kwargs):
 
 
 @shops_blueprint.route("/<shop_id>", methods=['GET'])
-def get_shop(shop_id : str,*args,**kwargs):
-
-
+def get_shop(shop_id: str, *args, **kwargs):
     if shop_id is None:
         return jsonify({"corrections": "shop_id not supplied"}), 400
 
     shop_collection = auth.create_collection_connection("Shops")
 
+    # Use aggregation to calculate average score
+    pipeline = [
+        {"$match": {"_id": ObjectId(shop_id)}},
+        {"$addFields": {
+            "avgScore": {"$avg": "$reviews.score"}
+        }},
+        {"$project": {
+            "reviews": 0,  # Exclude reviews from response
+            "photo" : 0,
+            "_id": 0,
+        }}
+    ]
 
-    shop = shop_collection.find_one({"_id": ObjectId(shop_id)})
+    result = list(shop_collection.aggregate(pipeline))
 
-    if shop is None:
+    if not result:
         return jsonify({"corrections": "shop not found"}), 404
 
+    shop = result[0]
     return jsonify(shop), 200
 
 
@@ -308,7 +319,7 @@ def reactive_shop(shop_id: str, *args,**kwargs):
 
 @shops_blueprint.route('/get_types', methods=['GET'])
 def get_types():
-    return get_types_of_shop()
+    return jsonify(get_types_of_shop()), 200
 
 def get_types_of_shop():
 
@@ -334,4 +345,4 @@ def get_types_of_shop():
     results = [doc["_id"] for doc in results]
 
 
-    return jsonify(results), 200
+    return results
