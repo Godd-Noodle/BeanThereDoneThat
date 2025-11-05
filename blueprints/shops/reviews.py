@@ -6,7 +6,6 @@ from utilities import auth, verify
 reviews_blueprint = Blueprint('reviews', __name__)
 
 
-
 @reviews_blueprint.route("/", methods=['POST','PUT'])
 @auth.is_user
 def upsert_review(*args,**kwargs):
@@ -114,7 +113,7 @@ def get_reviews():
     shops_collection = auth.create_collection_connection("Shops")
 
     # Build match conditions for reviews
-    review_match = {"$eq": ["$$review.deleted", 0]}
+    review_match = {"$eq": [{"$ifNull": ["$$review.deleted", False]}, False]}
 
     if user_id:
         review_match = {
@@ -125,17 +124,19 @@ def get_reviews():
         }
 
     if min_score:
+        current_match = review_match
         review_match = {
             "$and": [
-                review_match if isinstance(review_match, dict) and "$and" in review_match else review_match,
+                current_match,
                 {"$gte": ["$$review.score", int(min_score)]}
             ]
         }
 
     if max_score:
+        current_match = review_match
         review_match = {
             "$and": [
-                review_match if isinstance(review_match, dict) and "$and" in review_match else review_match,
+                current_match,
                 {"$lte": ["$$review.score", int(max_score)]}
             ]
         }
