@@ -101,14 +101,14 @@ def get_user(user_id, *args, **kwargs):
 
     # Validate ObjectId format
     try:
-        obj_id = ObjectId(user_id)
+        user_id = ObjectId(user_id)
     except Exception:
         return make_response(jsonify({'error': 'Invalid user_id format'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
     # Get user but exclude password field
-    user = user_collection.find_one({"_id": obj_id}, {"password": 0})
+    user = dict(user_collection.find_one({"_id": user_id}, {"password": 0}))
 
     if user is None:
         return make_response(jsonify({'error': 'User not found'}), 404)
@@ -123,8 +123,9 @@ def get_user(user_id, *args, **kwargs):
     return jsonify(user), 200
 
 
-@auth.is_admin
+
 @users_blueprint.route('/', methods=['GET'])
+@auth.is_admin
 def get_users(*args, **kwargs):
     """Get list of users with optional filters (admin only)"""
 
@@ -197,6 +198,7 @@ def get_users(*args, **kwargs):
 
 
 @users_blueprint.route('/login', methods=['POST'])
+@auth.is_user
 def login(*args, **kwargs):
     """User login endpoint"""
 
@@ -317,8 +319,9 @@ def deactivate(*args, **kwargs):
     return jsonify({'message': 'User has been deactivated'}), 200
 
 
-@auth.is_admin
+
 @users_blueprint.route('/recover', methods=['POST'])
+@auth.is_admin
 def recover(*args, **kwargs):
     """Recover a deactivated user account (admin only)"""
 
@@ -342,8 +345,9 @@ def recover(*args, **kwargs):
     return jsonify({'message': 'User has been reactivated'}), 200
 
 
-@auth.is_admin
+
 @users_blueprint.route('/delete', methods=['DELETE'])
+@auth.is_admin
 def delete(*args, **kwargs):
     """Permanently delete a user account (admin only)"""
 
@@ -364,7 +368,7 @@ def delete(*args, **kwargs):
     return jsonify({'message': 'User has been deleted'}), 200
 
 
-@auth.is_user
+
 @users_blueprint.route('/revoke_sessions', methods=['DELETE'])
 def revoke_sessions(*args, **kwargs):
     """Revoke user sessions"""
@@ -394,3 +398,41 @@ def revoke_sessions(*args, **kwargs):
         return make_response(jsonify({'error': 'No sessions deleted'}), 404)
 
     return jsonify({'message': 'Session(s) have been revoked'}), 200
+
+@users_blueprint.route("<user_id>", methods=['PUT'])
+@auth.is_admin
+def set_admin(user_id , *args, **kwargs):
+    this_user_id = kwargs.get('user_id')
+
+    admin_value = request.args.get('admin_value', False , bool)
+
+
+
+    if user_id == this_user_id:
+        return make_response(jsonify({'error': 'You can\'t change the status of you own User account'}), 403)
+
+
+    if admin_value not in [True, False]:
+        return make_response(jsonify({'error': 'admin_value required to be a true or false'}), 400)
+
+    user_collection: Collection = auth.create_collection_connection(collection_name="Users")
+
+    #check if user exists
+
+    user = dict(user_collection.find_one({"_id": ObjectId(user_id), "deleted": False}))
+
+
+    if not user:
+        return make_response(jsonify({'error': 'User does not exist'}), 404)
+
+
+    #set user admin value to the argument passed in
+
+    result = user_collection.update_one({"_id": ObjectId(user_id)}, {"$set": {"admin": admin_value}})
+
+    if result.modified_count == 0:
+        return make_response(jsonify({'error': 'No changes made to the User'}), 404)
+
+    return jsonify({'message': 'User has been changed successfully'}), 200
+
+
