@@ -13,7 +13,6 @@ users_blueprint = Blueprint('users', __name__)
 @users_blueprint.route('/create', methods=['POST'])
 def create_user(*args, **kwargs):
     """Create a new user account"""
-
     _request_args = {}
 
     if request.is_json:
@@ -96,22 +95,19 @@ def create_user(*args, **kwargs):
 @users_blueprint.route('/<user_id>', methods=['GET'])
 def get_user(user_id, *args, **kwargs):
     """Get a single user by ID"""
-
     if user_id is None:
         return make_response(jsonify({'error': 'user_id not given'}), 400)
 
     # Validate ObjectId format
     try:
         user_id = ObjectId(user_id)
-    except TypeError:
+    except (TypeError, bson.errors.InvalidId):
         return make_response(jsonify({'error': 'Invalid user_id format'}), 400)
-    except bson.errors.InvalidId:
-        return make_response(jsonify({'error': 'Invalid user_id'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
     # Get user but exclude password field
-    user = dict(user_collection.find_one({"_id": user_id}, {"password": 0}))
+    user = user_collection.find_one({"_id": user_id, "deleted": False}, {"password": 0, "sessions": 0})
 
     if user is None:
         return make_response(jsonify({'error': 'User not found'}), 404)
@@ -126,11 +122,10 @@ def get_user(user_id, *args, **kwargs):
     return jsonify(user), 200
 
 
-@auth.is_admin
 @users_blueprint.route('/', methods=['GET'])
+@auth.is_admin
 def get_users(*args, **kwargs):
     """Get list of users with optional filters (admin only)"""
-
     # Get arguments to use in filter
     users_filter = {}
     name = request.args.get('name', None)
@@ -186,8 +181,8 @@ def get_users(*args, **kwargs):
     # Make request for users
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
-    # Exclude password field from results
-    users_cursor = user_collection.find(users_filter, {"password": 0}).skip(offset).limit(limit)
+    # Exclude password and sessions field from results
+    users_cursor = user_collection.find(users_filter, {"password": 0, "sessions": 0}).skip(offset).limit(limit)
 
     users = []
     for user in users_cursor:
@@ -198,11 +193,10 @@ def get_users(*args, **kwargs):
 
     return make_response(jsonify({'users': users, 'count': len(users)}), 200)
 
-@auth.is_user
+
 @users_blueprint.route('/login', methods=['POST'])
 def login(*args, **kwargs):
     """User login endpoint"""
-
     if not request.authorization:
         return make_response(jsonify({'error': 'Authorization required'}), 401)
 
@@ -217,13 +211,16 @@ def login(*args, **kwargs):
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
-    user = user_collection.find_one({"email": user_email}, {"_id": 1, "password": 1, "deleted": 1})
+    user = user_collection.find_one({"email": user_email}, {"_id": 1, "password": 1, "deleted": 1, "verified": 1})
 
     if user is None:
         return make_response(jsonify({'error': 'User not found'}), 404)
 
     if user.get('deleted', False):
         return make_response(jsonify({'error': 'Account deactivated'}), 403)
+
+    if not user.get('verified', False):
+        return make_response(jsonify({'error': 'Account not verified'}), 403)
 
     # Use proper password verification
     if not auth.verify_password(password, user['password']):
@@ -237,11 +234,10 @@ def login(*args, **kwargs):
     return jsonify({'token': token}), 200
 
 
-@auth.is_user
 @users_blueprint.route('/logout', methods=['POST'])
+@auth.is_user
 def logout(*args, **kwargs):
     """Logout user by removing session"""
-
     session_id = request.args.get('session_id')
     user_id = kwargs.get('user_id')
 
@@ -264,11 +260,10 @@ def logout(*args, **kwargs):
     return jsonify({'message': 'Logged out successfully'}), 200
 
 
-@auth.is_user
 @users_blueprint.route('/update', methods=['PUT'])
+@auth.is_user
 def update(*args, **kwargs):
     """Update user information"""
-
     user_id = kwargs.get('user_id')
 
     if not request.is_json:
@@ -280,12 +275,23 @@ def update(*args, **kwargs):
     updates = {}
     for field in allowed_fields:
         if field in update_data:
+            # Validate name if provided
+            if field == 'name':
+                name_corrections = verify.check_name(update_data[field].split(" "))
+                if name_corrections:
+                    return make_response(jsonify({'name': name_corrections}), 400)
             updates[field] = update_data[field]
 
     if not updates:
         return make_response(jsonify({'error': 'No valid fields to update'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
+
+    # Check if email already exists (if updating email)
+    if 'email' in updates:
+        existing_user = user_collection.find_one({"email": updates['email'], "_id": {"$ne": ObjectId(user_id)}})
+        if existing_user:
+            return make_response(jsonify({'error': 'Email already in use'}), 409)
 
     result = user_collection.update_one(
         {'_id': ObjectId(user_id)},
@@ -298,14 +304,14 @@ def update(*args, **kwargs):
     return jsonify({'message': 'User updated successfully'}), 200
 
 
-@auth.is_user
 @users_blueprint.route('/deactivate', methods=['POST'])
+@auth.is_user
 def deactivate(*args, **kwargs):
     """Deactivate user account"""
-
     user_id = kwargs.get('user_id')
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
+    shops_collection: Collection = auth.create_collection_connection(collection_name="Shops")
 
     result = user_collection.update_one(
         {"_id": ObjectId(user_id)},
@@ -315,22 +321,26 @@ def deactivate(*args, **kwargs):
     if result.matched_count == 0:
         return make_response(jsonify({'error': 'User not found'}), 404)
 
-    # TODO: Deactivate all shops related to this user
+    # Deactivate all shops owned by this user
+    shops_collection.update_many(
+        {"owner_id": user_id, "deleted": False},
+        {"$set": {"deleted": True}}
+    )
 
     return jsonify({'message': 'User has been deactivated'}), 200
 
 
-@auth.is_admin
 @users_blueprint.route('/recover', methods=['POST'])
+@auth.is_admin
 def recover(*args, **kwargs):
     """Recover a deactivated user account (admin only)"""
-
     user_id = request.args.get('user_id')
 
     if not user_id:
         return make_response(jsonify({'error': 'user_id required'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
+    shops_collection: Collection = auth.create_collection_connection(collection_name="Shops")
 
     result = user_collection.update_one(
         {"_id": ObjectId(user_id)},
@@ -340,38 +350,45 @@ def recover(*args, **kwargs):
     if result.matched_count == 0:
         return make_response(jsonify({'error': 'User not found'}), 404)
 
-    # TODO: Reactivate all shops related to this user
+    # Reactivate all shops owned by this user
+    shops_collection.update_many(
+        {"owner_id": user_id, "deleted": True},
+        {"$set": {"deleted": False}}
+    )
 
     return jsonify({'message': 'User has been reactivated'}), 200
 
 
-@auth.is_admin
 @users_blueprint.route('/delete', methods=['DELETE'])
+@auth.is_admin
 def delete(*args, **kwargs):
     """Permanently delete a user account (admin only)"""
-
     user_id = request.args.get('user_id')
 
     if not user_id:
         return make_response(jsonify({'error': 'user_id required'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
+    shops_collection: Collection = auth.create_collection_connection(collection_name="Shops")
 
     result = user_collection.delete_one({"_id": ObjectId(user_id)})
 
     if result.deleted_count == 0:
         return make_response(jsonify({'error': 'User not found'}), 404)
 
-    # TODO: Deactivate shops related to this user and remove the user from the owner field
+    # Deactivate shops owned by this user and clear owner field
+    shops_collection.update_many(
+        {"owner_id": user_id},
+        {"$set": {"deleted": True, "owner_id": None}}
+    )
 
     return jsonify({'message': 'User has been deleted'}), 200
 
 
-
 @users_blueprint.route('/revoke_sessions', methods=['DELETE'])
+@auth.is_user
 def revoke_sessions(*args, **kwargs):
     """Revoke user sessions"""
-
     user_id = kwargs.get('user_id')
     session_id = request.args.get('session_id', None)
 
@@ -398,40 +415,32 @@ def revoke_sessions(*args, **kwargs):
 
     return jsonify({'message': 'Session(s) have been revoked'}), 200
 
-@auth.is_admin
+
 @users_blueprint.route("/<user_id>", methods=['PUT'])
-def set_admin(user_id , *args, **kwargs):
+@auth.is_admin
+def set_admin(user_id, *args, **kwargs):
+    """Set admin status for a user (admin only)"""
     this_user_id = kwargs.get('user_id')
+    admin_value_str = request.args.get('admin_value', 'false').lower()
 
-    admin_value = request.args.get('admin_value', False , bool)
-
-
+    # Convert string to boolean
+    admin_value = admin_value_str == 'true'
 
     if user_id == this_user_id:
-        return make_response(jsonify({'error': 'You can\'t change the status of you own User account'}), 403)
-
-
-    if admin_value not in [True, False]:
-        return make_response(jsonify({'error': 'admin_value required to be a true or false'}), 400)
+        return make_response(jsonify({'error': 'You can\'t change the status of your own User account'}), 403)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
-    #check if user exists
-
-    user = dict(user_collection.find_one({"_id": ObjectId(user_id), "deleted": False}))
-
+    # Check if user exists
+    user = user_collection.find_one({"_id": ObjectId(user_id), "deleted": False})
 
     if not user:
         return make_response(jsonify({'error': 'User does not exist'}), 404)
 
-
-    #set user admin value to the argument passed in
-
+    # Set user admin value to the argument passed in
     result = user_collection.update_one({"_id": ObjectId(user_id)}, {"$set": {"admin": admin_value}})
 
     if result.modified_count == 0:
         return make_response(jsonify({'error': 'No changes made to the User'}), 404)
 
     return jsonify({'message': 'User has been changed successfully'}), 200
-
-
