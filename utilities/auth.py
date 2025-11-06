@@ -85,8 +85,8 @@ def is_user(func: callable):
         if this_user is None or this_user.get("deleted", False):
             return jsonify({"message": "User not found from JWT. Perhaps the account has been deleted"}), 401
 
-        if not this_user.get("verified", False):
-            return jsonify({"message": "User has not verified their account yet"}), 401
+        # if not this_user.get("verified", False):
+        #     return jsonify({"message": "User has not verified their account yet"}), 401
 
         kwargs["user_id"] = jwt_values["user_id"]
         kwargs["name"] = this_user["name"]
