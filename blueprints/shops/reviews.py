@@ -2,6 +2,9 @@ import datetime
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
 from utilities import auth, verify
+from flask import send_file
+import io
+from PIL import Image
 
 reviews_blueprint = Blueprint('reviews', __name__)
 
@@ -177,11 +180,30 @@ def get_reviews():
         {
             "$project": {
                 "_id": 0,
-                "photo": 0,
                 "review": "$reviews"
             }
         }
     ]
+
+    reviews = list(shops_collection.aggregate(pipeline))
+
+    # Convert ObjectIds to strings for JSON serialization and remove photo
+    for r in reviews:
+        if 'review' in r:
+            if 'user_id' in r['review']:
+                r['review']['user_id'] = str(r['review']['user_id'])
+            if 'date_created' in r['review']:
+                r['review']['date_created'] = r['review']['date_created'].isoformat()
+            if 'date_edited' in r['review']:
+                r['review']['date_edited'] = r['review']['date_edited'].isoformat()
+            if 'edits' in r['review']:
+                for edit in r['review']['edits']:
+                    if 'date' in edit:
+                        edit['date'] = edit['date'].isoformat()
+            # Remove photo from response - use separate endpoint to get photos
+            if 'photo' in r['review']:
+                del r['review']['photo']
+
 
     reviews = list(shops_collection.aggregate(pipeline))
 
@@ -191,7 +213,7 @@ def get_reviews():
             if 'user_id' in r['review']:
                 r['review']['user_id'] = str(r['review']['user_id'])
             if 'date_created' in r['review']:
-                r['review']['date_created'] = r['review']['date_created'].isoformat()
+                 r['review']['date_created'] = r['review']['date_created'].isoformat()
             if 'date_edited' in r['review']:
                 r['review']['date_edited'] = r['review']['date_edited'].isoformat()
             if 'edits' in r['review']:
@@ -330,3 +352,174 @@ def delete_review(*args, **kwargs):
         return jsonify({"error": "Review not found"}), 404
 
     return jsonify({"message": "Review deleted successfully"}), 200
+
+
+@reviews_blueprint.route("/photo", methods=['PUT'])
+@auth.is_user
+def update_review_photo(*args, **kwargs):
+    """Upload or update review photo"""
+
+
+    user_id = kwargs.get('user_id')
+    shop_id = request.args.get('shop_id')
+    photo = request.files.get('photo')
+
+    if not shop_id:
+        return jsonify({"error": "shop_id is required"}), 400
+
+    if not photo:
+        return jsonify({"error": "No photo provided"}), 400
+
+    try:
+        shop_id_obj = ObjectId(shop_id)
+        user_id_obj = ObjectId(user_id)
+    except:
+        return jsonify({"error": "Invalid ID format"}), 400
+
+    try:
+        # Convert photo to JPEG
+        photo_jpeg = Image.open(photo).convert('RGB')
+
+        # Resize photo (returns new image, doesn't modify in place)
+        photo_jpeg = photo_jpeg.resize((256, 256))
+
+        # Save to bytes
+        img_io = io.BytesIO()
+        photo_jpeg.save(img_io, format='JPEG', quality=85)
+        photo_bytes = img_io.getvalue()
+    except Exception as e:
+        return jsonify({"error": f"Error processing image: {str(e)}"}), 400
+
+    shops_collection = auth.create_collection_connection("Shops")
+
+    # Verify user owns this review
+    review = shops_collection.find_one(
+        {
+            "_id": shop_id_obj,
+            "deleted": False,
+            "reviews.user_id": user_id_obj,
+            "reviews.deleted": False
+        },
+        {"_id": 1}
+    )
+
+    if not review:
+        return jsonify({"error": "Review not found"}), 404
+
+    # Store binary data
+    result = shops_collection.update_one(
+        {
+            "_id": shop_id_obj,
+            "reviews.user_id": user_id_obj,
+            "reviews.deleted": False
+        },
+        {
+            "$set": {"reviews.$.photo": photo_bytes}
+        }
+    )
+
+    if result.modified_count == 0:
+        return jsonify({"error": "Failed to update photo"}), 500
+
+    return jsonify({"message": "Review photo updated successfully"}), 200
+
+
+@reviews_blueprint.route("/photo", methods=['GET'])
+def get_review_photo():
+    """Get review photo"""
+
+    shop_id = request.args.get('shop_id')
+    review_user_id = request.args.get('review_user_id')
+
+    if not shop_id or not review_user_id:
+        return jsonify({"error": "shop_id and review_user_id are required"}), 400
+
+    try:
+        shop_id_obj = ObjectId(shop_id)
+        review_user_id_obj = ObjectId(review_user_id)
+    except:
+        return jsonify({"error": "Invalid ID format"}), 400
+
+    shops_collection = auth.create_collection_connection("Shops")
+
+    # Get review with photo
+    result = shops_collection.find_one(
+        {
+            "_id": shop_id_obj,
+            "deleted": False,
+            "reviews.user_id": review_user_id_obj,
+            "reviews.deleted": False
+        },
+        {"reviews.$": 1}
+    )
+
+    if not result or not result.get('reviews'):
+        return jsonify({"error": "Review not found"}), 404
+
+    review = result['reviews'][0]
+
+    if "photo" not in review or review["photo"] is None:
+        return jsonify({"error": "Photo not found"}), 404
+
+    return send_file(
+        io.BytesIO(review["photo"]),
+        mimetype='image/jpeg'
+    )
+
+
+@reviews_blueprint.route("/photo", methods=['DELETE'])
+@auth.is_user
+def delete_review_photo(*args, **kwargs):
+    """Delete review photo"""
+    user_id = kwargs.get('user_id')
+    is_admin = kwargs.get('is_admin', False)
+    shop_id = request.args.get('shop_id')
+
+    # Allow admin to delete any review photo
+    if is_admin and request.args.get('review_user_id'):
+        user_id = request.args.get('review_user_id')
+
+    if not shop_id:
+        return jsonify({"error": "shop_id is required"}), 400
+
+    try:
+        shop_id_obj = ObjectId(shop_id)
+        user_id_obj = ObjectId(user_id)
+    except:
+        return jsonify({"error": "Invalid ID format"}), 400
+
+    shops_collection = auth.create_collection_connection("Shops")
+
+    # Check if review exists
+    review = shops_collection.find_one(
+        {
+            "_id": shop_id_obj,
+            "deleted": False,
+            "reviews.user_id": user_id_obj,
+            "reviews.deleted": False
+        },
+        {"reviews.$": 1}
+    )
+
+    if not review or not review.get('reviews'):
+        return jsonify({"error": "Review not found"}), 404
+
+    if "photo" not in review['reviews'][0] or review['reviews'][0]["photo"] is None:
+        return jsonify({"error": "No photo to delete"}), 404
+
+    # Remove the photo field
+    result = shops_collection.update_one(
+        {
+            "_id": shop_id_obj,
+            "reviews.user_id": user_id_obj,
+            "reviews.deleted": False
+        },
+        {
+            "$set": {"reviews.$.photo": None}
+        }
+    )
+
+    if result.modified_count == 0:
+        return jsonify({"error": "Failed to delete photo"}), 500
+
+    return jsonify({"message": "Review photo deleted successfully"}), 200
