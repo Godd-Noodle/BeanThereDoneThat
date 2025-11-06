@@ -128,6 +128,40 @@ def get_shops(*args, **kwargs):
     if search:
         filters['title'] = {'$regex': search, '$options': 'i'}
 
+        # Add filter for title search
+    search = request.args.get('search')
+    if search:
+        filters['title'] = {'$regex': search, '$options': 'i'}
+
+    # Add geolocation filter
+    latitude = request.args.get('latitude')
+    longitude = request.args.get('longitude')
+    radius = request.args.get('radius')  # in meters
+
+    use_geolocation = False
+    if latitude and longitude:
+        try:
+            lat_float = float(latitude)
+            long_float = float(longitude)
+            radius_float = float(radius) if radius else 5000  # default 5km radius
+
+            # Validate coordinates
+            if -90 <= lat_float <= 90 and -180 <= long_float <= 180 and radius_float > 0:
+                filters['location'] = {
+                    '$near': {
+                        '$geometry': {
+                            'type': 'Point',
+                            'coordinates': [long_float, lat_float]
+                        },
+                        '$maxDistance': radius_float
+                    }
+                }
+                use_geolocation = True
+            else:
+                return jsonify({"error": "Invalid latitude, longitude, or radius values"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "Latitude, longitude, and radius must be valid numbers"}), 400
+
     # Make request
     shop_collection = auth.create_collection_connection("Shops")
 
