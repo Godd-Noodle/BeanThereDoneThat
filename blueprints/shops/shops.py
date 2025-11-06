@@ -188,7 +188,10 @@ def get_shops(*args, **kwargs):
                 "categoryName": 1,
                 "location": 1,
                 "avgScore": 1,
-                "reviewCount": 1
+                "reviewCount": 1,
+                "owner_id" : 1,
+                "type": 1,
+                "deleted" : 1,
             }
         }
     ]
@@ -197,6 +200,7 @@ def get_shops(*args, **kwargs):
 
     for shop in shops:
         shop["_id"] = str(shop["_id"])
+        shop["owner_id"] = str(shop["owner_id"])
 
     return jsonify({
         "shops": shops,
