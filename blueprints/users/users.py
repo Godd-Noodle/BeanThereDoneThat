@@ -444,9 +444,9 @@ def revoke_sessions(*args, **kwargs):
     return jsonify({'message': 'Session(s) have been revoked'}), 200
 
 
-@users_blueprint.route("/<user_id>/set_admin", methods=['PUT'])
+@users_blueprint.route("/<_user_id>/set_admin", methods=['PUT'])
 @auth.is_admin
-def set_admin(user_id, *args, **kwargs):
+def set_admin(_user_id, *args, **kwargs):
     """Set admin status for a user (admin only)"""
     this_user_id = kwargs.get('user_id')
     admin_value_str = request.args.get('admin_value', 'false').lower()
@@ -454,19 +454,19 @@ def set_admin(user_id, *args, **kwargs):
     # Convert string to boolean
     admin_value = admin_value_str == 'true'
 
-    if user_id == this_user_id:
+    if _user_id == this_user_id:
         return make_response(jsonify({'error': 'You can\'t change the status of your own User account'}), 403)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
     # Check if user exists
-    user = user_collection.find_one({"_id": ObjectId(user_id), "deleted": False})
+    user = user_collection.find_one({"_id": ObjectId(_user_id), "deleted": False})
 
     if not user:
         return make_response(jsonify({'error': 'User does not exist'}), 404)
 
     # Set user admin value to the argument passed in
-    result = user_collection.update_one({"_id": ObjectId(user_id)}, {"$set": {"admin": admin_value}})
+    result = user_collection.update_one({"_id": ObjectId(_user_id)}, {"$set": {"admin": admin_value}})
 
     if result.modified_count == 0:
         return make_response(jsonify({'error': 'No changes made to the User'}), 404)
