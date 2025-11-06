@@ -294,7 +294,7 @@ def add_long_lat():
             j = json.loads(contents.decode())
 
             if not j or "lon" not in j[0] or "lat" not in j[0]:
-                print(f"  ✗ Invalid response for {shop.get('street', 'Unknown')}")
+                print(f"Invalid response for {shop.get('street', 'Unknown')}")
                 # Set empty location so we skip it next time
                 shop_collection.update_one(
                     {"_id": shop["_id"]},

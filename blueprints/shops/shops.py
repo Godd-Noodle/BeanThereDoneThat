@@ -128,10 +128,6 @@ def get_shops(*args, **kwargs):
     if search:
         filters['title'] = {'$regex': search, '$options': 'i'}
 
-        # Add filter for title search
-    search = request.args.get('search')
-    if search:
-        filters['title'] = {'$regex': search, '$options': 'i'}
 
     # Add geolocation filter
     latitude = request.args.get('latitude')
@@ -139,6 +135,9 @@ def get_shops(*args, **kwargs):
     radius = request.args.get('radius')  # in meters
 
     use_geolocation = False
+    geolocation_coords = None
+    geolocation_radius = None
+
     if latitude and longitude:
         try:
             lat_float = float(latitude)
@@ -147,16 +146,10 @@ def get_shops(*args, **kwargs):
 
             # Validate coordinates
             if -90 <= lat_float <= 90 and -180 <= long_float <= 180 and radius_float > 0:
-                filters['location'] = {
-                    '$near': {
-                        '$geometry': {
-                            'type': 'Point',
-                            'coordinates': [long_float, lat_float]
-                        },
-                        '$maxDistance': radius_float
-                    }
-                }
                 use_geolocation = True
+                geolocation_coords = [long_float, lat_float]
+                geolocation_radius = radius_float
+                # Don't add to filters yet - we'll handle this in the pipeline
             else:
                 return jsonify({"error": "Invalid latitude, longitude, or radius values"}), 400
         except (ValueError, TypeError):
