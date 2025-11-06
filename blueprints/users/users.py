@@ -15,9 +15,8 @@ def create_user(*args, **kwargs):
     """Create a new user account"""
     _request_args = {}
 
-    if request.is_json:
-        _request_args = request.json
-    elif request.args:
+
+    if request.args:
         _request_args = request.args
     else:
         return make_response(jsonify({'error': 'No data provided'}), 400)
@@ -91,8 +90,37 @@ def create_user(*args, **kwargs):
 
     return jsonify({'user_id': user_id, 'token': token}), 201
 
+@users_blueprint.route('/self', methods=['GET'])
+@auth.is_user
+def get_self(*args, **kwargs):
+
+    user_id = kwargs.get('user_id')
+
+    # Validate ObjectId format
+    try:
+        user_id = ObjectId(user_id)
+    except (TypeError, bson.errors.InvalidId):
+        return make_response(jsonify({'error': 'Invalid user_id format'}), 400)
+
+    user_collection: Collection = auth.create_collection_connection(collection_name="Users")
+
+    # Get user but exclude password field
+    user = user_collection.find_one({"_id": user_id, "deleted": False}, {"password": 0, "sessions": 0})
+
+    if user is None:
+        return make_response(jsonify({'error': 'User not found'}), 404)
+
+    # Convert ObjectId to string for JSON serialization
+    user["_id"] = str(user["_id"])
+
+    # Convert datetime to ISO format if present
+    if "dob" in user:
+        user["dob"] = user["dob"].isoformat()
+
+    return jsonify({"user" : user}), 200
 
 @users_blueprint.route('/<user_id>', methods=['GET'])
+@auth.is_admin
 def get_user(user_id, *args, **kwargs):
     """Get a single user by ID"""
     if user_id is None:
@@ -119,7 +147,7 @@ def get_user(user_id, *args, **kwargs):
     if "dob" in user:
         user["dob"] = user["dob"].isoformat()
 
-    return jsonify(user), 200
+    return jsonify({"user" : user}), 200
 
 
 @users_blueprint.route('/', methods=['GET'])
@@ -219,8 +247,8 @@ def login(*args, **kwargs):
     if user.get('deleted', False):
         return make_response(jsonify({'error': 'Account deactivated'}), 403)
 
-    if not user.get('verified', False):
-        return make_response(jsonify({'error': 'Account not verified'}), 403)
+    # if not user.get('verified', False):
+    #     return make_response(jsonify({'error': 'Account not verified'}), 403)
 
     # Use proper password verification
     if not auth.verify_password(password, user['password']):
@@ -269,7 +297,7 @@ def update(*args, **kwargs):
     if not request.is_json:
         return make_response(jsonify({'error': 'JSON data required'}), 400)
 
-    update_data = request.json
+    update_data = request.args
     allowed_fields = ['name', 'email']
 
     updates = {}
@@ -416,7 +444,7 @@ def revoke_sessions(*args, **kwargs):
     return jsonify({'message': 'Session(s) have been revoked'}), 200
 
 
-@users_blueprint.route("/<user_id>", methods=['PUT'])
+@users_blueprint.route("/<user_id>/set_admin", methods=['PUT'])
 @auth.is_admin
 def set_admin(user_id, *args, **kwargs):
     """Set admin status for a user (admin only)"""
