@@ -39,7 +39,7 @@ def self(*args, **kwargs):
 
 
 @app.route("/help", methods=["GET"])
-def _help(*args, **kwargs):
+def help(*args, **kwargs):
     """API documentation endpoint"""
     category = request.args.get('category')
 
@@ -90,7 +90,10 @@ def _help(*args, **kwargs):
             "GET /api/1.0/reviews/": "Get reviews for a shop",
             "DELETE /api/1.0/reviews/": "Delete a review (requires auth)",
             "POST /api/1.0/reviews/like": "Like a review (requires auth)",
-            "DELETE /api/1.0/reviews/like": "Remove like from review (requires auth)"
+            "DELETE /api/1.0/reviews/like": "Remove like from review (requires auth)",
+            "PUT /api/1.0/reviews/photo": "Upload/update review photo (requires auth)",
+            "GET /api/1.0/reviews/photo": "Get review photo",
+            "DELETE /api/1.0/reviews/photo": "Delete review photo (requires auth)"
         }
     else:
         help_data["message"] = "Specify a category parameter to get detailed endpoint information"
