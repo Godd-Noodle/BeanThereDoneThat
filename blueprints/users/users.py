@@ -119,23 +119,23 @@ def get_self(*args, **kwargs):
 
     return jsonify({"user" : user}), 200
 
-@users_blueprint.route('/<user_id>', methods=['GET'])
+@users_blueprint.route('/<search_user_id>', methods=['GET'])
 @auth.is_admin
-def get_user(user_id, *args, **kwargs):
+def get_user(search_user_id, *args, **kwargs):
     """Get a single user by ID"""
-    if user_id is None:
+    if search_user_id is None:
         return make_response(jsonify({'error': 'user_id not given'}), 400)
 
     # Validate ObjectId format
     try:
-        user_id = ObjectId(user_id)
+        search_user_id = ObjectId(search_user_id)
     except (TypeError, bson.errors.InvalidId):
         return make_response(jsonify({'error': 'Invalid user_id format'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
     # Get user but exclude password field
-    user = user_collection.find_one({"_id": user_id, "deleted": False}, {"password": 0, "sessions": 0})
+    user = user_collection.find_one({"_id": search_user_id, "deleted": False}, {"password": 0, "sessions": 0})
 
     if user is None:
         return make_response(jsonify({'error': 'User not found'}), 404)
