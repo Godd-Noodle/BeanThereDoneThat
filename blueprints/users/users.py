@@ -135,7 +135,7 @@ def get_user(search_user_id, *args, **kwargs):
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
     # Get user but exclude password field
-    user = user_collection.find_one({"_id": search_user_id, "deleted": False}, {"password": 0, "sessions": 0})
+    user = user_collection.find_one({"_id": search_user_id}, {"password": 0, "sessions": 0})
 
     if user is None:
         return make_response(jsonify({'error': 'User not found'}), 404)
