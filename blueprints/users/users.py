@@ -1,3 +1,4 @@
+import bson
 from bson import ObjectId
 from flask import request, make_response, jsonify, Blueprint
 from pymongo.collection import Collection
@@ -102,8 +103,10 @@ def get_user(user_id, *args, **kwargs):
     # Validate ObjectId format
     try:
         user_id = ObjectId(user_id)
-    except Exception:
+    except TypeError:
         return make_response(jsonify({'error': 'Invalid user_id format'}), 400)
+    except bson.errors.InvalidId:
+        return make_response(jsonify({'error': 'Invalid user_id'}), 400)
 
     user_collection: Collection = auth.create_collection_connection(collection_name="Users")
 
@@ -123,9 +126,8 @@ def get_user(user_id, *args, **kwargs):
     return jsonify(user), 200
 
 
-
-@users_blueprint.route('/', methods=['GET'])
 @auth.is_admin
+@users_blueprint.route('/', methods=['GET'])
 def get_users(*args, **kwargs):
     """Get list of users with optional filters (admin only)"""
 
@@ -196,9 +198,8 @@ def get_users(*args, **kwargs):
 
     return make_response(jsonify({'users': users, 'count': len(users)}), 200)
 
-
-@users_blueprint.route('/login', methods=['POST'])
 @auth.is_user
+@users_blueprint.route('/login', methods=['POST'])
 def login(*args, **kwargs):
     """User login endpoint"""
 
@@ -224,7 +225,7 @@ def login(*args, **kwargs):
     if user.get('deleted', False):
         return make_response(jsonify({'error': 'Account deactivated'}), 403)
 
-    # Use proper password verification (assumes auth.verify_password exists)
+    # Use proper password verification
     if not auth.verify_password(password, user['password']):
         return make_response(jsonify({'error': 'Invalid password'}), 401)
 
@@ -264,7 +265,7 @@ def logout(*args, **kwargs):
 
 
 @auth.is_user
-@users_blueprint.route('/update', methods=['PUT', 'PATCH'])
+@users_blueprint.route('/update', methods=['PUT'])
 def update(*args, **kwargs):
     """Update user information"""
 
@@ -319,9 +320,8 @@ def deactivate(*args, **kwargs):
     return jsonify({'message': 'User has been deactivated'}), 200
 
 
-
-@users_blueprint.route('/recover', methods=['POST'])
 @auth.is_admin
+@users_blueprint.route('/recover', methods=['POST'])
 def recover(*args, **kwargs):
     """Recover a deactivated user account (admin only)"""
 
@@ -345,9 +345,8 @@ def recover(*args, **kwargs):
     return jsonify({'message': 'User has been reactivated'}), 200
 
 
-
-@users_blueprint.route('/delete', methods=['DELETE'])
 @auth.is_admin
+@users_blueprint.route('/delete', methods=['DELETE'])
 def delete(*args, **kwargs):
     """Permanently delete a user account (admin only)"""
 
@@ -399,8 +398,8 @@ def revoke_sessions(*args, **kwargs):
 
     return jsonify({'message': 'Session(s) have been revoked'}), 200
 
-@users_blueprint.route("<user_id>", methods=['PUT'])
 @auth.is_admin
+@users_blueprint.route("/<user_id>", methods=['PUT'])
 def set_admin(user_id , *args, **kwargs):
     this_user_id = kwargs.get('user_id')
 

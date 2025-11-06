@@ -158,3 +158,7 @@ def is_admin(func : callable):
             return jsonify("User is not admin"), 401
 
         return func(*args, **kwargs)
+
+
+def verify_password(password, db_password) -> bool:
+    return True if generate_password_hash(password) == db_password else False

@@ -63,7 +63,6 @@ def upsert_review(*args,**kwargs):
                 "score": old_review['score'],
                 "date": old_review['date_edited']
             }],
-            "comments": old_review.get('comments', []),
             "likes": old_review.get('likes', {}),
             "deleted": False,
             "photo": old_review.get('photo'),
@@ -83,7 +82,6 @@ def upsert_review(*args,**kwargs):
             "date_created": current_time,
             "date_edited": current_time,
             "edits": [],
-            "comments": [],
             "likes": {},
             "deleted": False,
             "photo": None,
@@ -166,6 +164,7 @@ def get_reviews():
         {
             "$project": {
                 "_id": 0,
+                "photo":0,
                 "review": "$reviews"
             }
         }
@@ -251,6 +250,11 @@ def dislike_review(*args, **kwargs):
 def delete_review(*args, **kwargs):
     user_id = kwargs.get('user_id')
     shop_id = request.args.get('shop_id')
+
+    #check if admin is true and if the admin has passed in a user_id in the args to delete a review
+    if kwargs.get("is_admin", False) and request.args.get('user_id'):
+        user_id = ObjectId(request.args.get('user_id'))
+
 
     if not shop_id:
         return jsonify({"error": "shop_id is required"}), 400
