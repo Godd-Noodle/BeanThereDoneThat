@@ -189,9 +189,9 @@ def get_shops(*args, **kwargs):
                 "location": 1,
                 "avgScore": 1,
                 "reviewCount": 1,
-                "owner_id" : 1,
+                "owner_id": 1,
                 "type": 1,
-                "deleted" : 1,
+                "deleted": 1,
             }
         }
     ]
@@ -200,7 +200,6 @@ def get_shops(*args, **kwargs):
 
     for shop in shops:
         shop["_id"] = str(shop["_id"])
-        shop["owner_id"] = str(shop["owner_id"])
 
     return jsonify({
         "shops": shops,
@@ -453,10 +452,10 @@ def delete_photo(shop_id: str, *args, **kwargs):
     if "photo" not in shop or shop["photo"] is None:
         return jsonify({"error": "No photo to delete"}), 404
 
-    # Remove the photo field
+    # Remove the photo field - use $unset with empty string
     shop_collection.update_one(
         {"_id": ObjectId(shop_id)},
-        {"$unset": {"photo": None}}
+        {"$unset": {"photo": ""}}
     )
 
     return jsonify({"message": "Photo deleted successfully"}), 200
