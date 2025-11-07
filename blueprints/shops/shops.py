@@ -187,7 +187,7 @@ def get_shops(*args, **kwargs):
     ]
 
     # Add distance calculation if using geolocation
-    # mongo atlas doesn't support some $geo commands, followed implementation from youtube
+    # mongo atlas doesn't support some $geo commands, followed implementation from YouTube
     if use_geolocation:
         pipeline.extend([
             {
