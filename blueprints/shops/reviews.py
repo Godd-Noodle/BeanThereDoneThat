@@ -336,20 +336,30 @@ def delete_review(*args, **kwargs):
 
     shops_collection = auth.create_collection_connection("Shops")
 
-    # Soft delete review
+    # Use arrayFilters to target the specific review
     result = shops_collection.update_one(
         {
             "_id": shop_id_obj,
-            "reviews.user_id": user_id_obj,
-            "reviews.deleted": False
+            "reviews": {
+                "$elemMatch": {
+                    "user_id": user_id_obj,
+                    "deleted": False
+                }
+            }
         },
         {
-            "$set": {"reviews.$.deleted": True}
-        }
+            "$set": {"reviews.$[review].deleted": True}
+        },
+        array_filters=[
+            {
+                "review.user_id": user_id_obj,
+                "review.deleted": False
+            }
+        ]
     )
 
     if result.modified_count == 0:
-        return jsonify({"error": "Review not found"}), 404
+        return jsonify({"error": "Review not found or already deleted"}), 404
 
     return jsonify({"message": "Review deleted successfully"}), 200
 
@@ -358,7 +368,6 @@ def delete_review(*args, **kwargs):
 @auth.is_user
 def update_review_photo(*args, **kwargs):
     """Upload or update review photo"""
-
 
     user_id = kwargs.get('user_id')
     shop_id = request.args.get('shop_id')
@@ -397,8 +406,12 @@ def update_review_photo(*args, **kwargs):
         {
             "_id": shop_id_obj,
             "deleted": False,
-            "reviews.user_id": user_id_obj,
-            "reviews.deleted": False
+            "reviews": {
+                "$elemMatch": {
+                    "user_id": user_id_obj,
+                    "deleted": False
+                }
+            }
         },
         {"_id": 1}
     )
@@ -406,16 +419,26 @@ def update_review_photo(*args, **kwargs):
     if not review:
         return jsonify({"error": "Review not found"}), 404
 
-    # Store binary data
+    # Store binary data using arrayFilters
     result = shops_collection.update_one(
         {
             "_id": shop_id_obj,
-            "reviews.user_id": user_id_obj,
-            "reviews.deleted": False
+            "reviews": {
+                "$elemMatch": {
+                    "user_id": user_id_obj,
+                    "deleted": False
+                }
+            }
         },
         {
-            "$set": {"reviews.$.photo": photo_bytes}
-        }
+            "$set": {"reviews.$[review].photo": photo_bytes}
+        },
+        array_filters=[
+            {
+                "review.user_id": user_id_obj,
+                "review.deleted": False
+            }
+        ]
     )
 
     if result.modified_count == 0:
@@ -442,13 +465,17 @@ def get_review_photo():
 
     shops_collection = auth.create_collection_connection("Shops")
 
-    # Get review with photo
+    # Get review with photo using $elemMatch
     result = shops_collection.find_one(
         {
             "_id": shop_id_obj,
             "deleted": False,
-            "reviews.user_id": review_user_id_obj,
-            "reviews.deleted": False
+            "reviews": {
+                "$elemMatch": {
+                    "user_id": review_user_id_obj,
+                    "deleted": False
+                }
+            }
         },
         {"reviews.$": 1}
     )
@@ -490,13 +517,17 @@ def delete_review_photo(*args, **kwargs):
 
     shops_collection = auth.create_collection_connection("Shops")
 
-    # Check if review exists
+    # Check if review exists using $elemMatch
     review = shops_collection.find_one(
         {
             "_id": shop_id_obj,
             "deleted": False,
-            "reviews.user_id": user_id_obj,
-            "reviews.deleted": False
+            "reviews": {
+                "$elemMatch": {
+                    "user_id": user_id_obj,
+                    "deleted": False
+                }
+            }
         },
         {"reviews.$": 1}
     )
@@ -505,18 +536,28 @@ def delete_review_photo(*args, **kwargs):
         return jsonify({"error": "Review not found"}), 404
 
     if "photo" not in review['reviews'][0] or review['reviews'][0]["photo"] is None:
-        return jsonify({"error": "No photo to delete"}), 404
+        return jsonify({"error": "Photo not found"}), 404
 
-    # Remove the photo field
+    # Delete photo using arrayFilters
     result = shops_collection.update_one(
         {
             "_id": shop_id_obj,
-            "reviews.user_id": user_id_obj,
-            "reviews.deleted": False
+            "reviews": {
+                "$elemMatch": {
+                    "user_id": user_id_obj,
+                    "deleted": False
+                }
+            }
         },
         {
-            "$set": {"reviews.$.photo": None}
-        }
+            "$set": {"reviews.$[review].photo": None}
+        },
+        array_filters=[
+            {
+                "review.user_id": user_id_obj,
+                "review.deleted": False
+            }
+        ]
     )
 
     if result.modified_count == 0:

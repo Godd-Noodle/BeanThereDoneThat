@@ -65,7 +65,13 @@ def create_shop(*args, **kwargs):
         if location_corrections:
             corrections.extend(location_corrections)
         else:
-            shop["location"] = {"type": "Point", "coordinates": [float(long), float(lat)]}
+            # Ensure coordinates are stored as numbers, not strings
+            try:
+                long_float = float(long)
+                lat_float = float(lat)
+                shop["location"] = {"type": "Point", "coordinates": [long_float, lat_float]}
+            except (ValueError, TypeError):
+                corrections.append("Invalid latitude or longitude format")
 
     if website:
         if len(website) < 3 or len(website) > 200:
@@ -128,7 +134,6 @@ def get_shops(*args, **kwargs):
     if search:
         filters['title'] = {'$regex': search, '$options': 'i'}
 
-
     # Add geolocation filter
     latitude = request.args.get('latitude')
     longitude = request.args.get('longitude')
@@ -149,7 +154,6 @@ def get_shops(*args, **kwargs):
                 use_geolocation = True
                 geolocation_coords = [long_float, lat_float]
                 geolocation_radius = radius_float
-                # Don't add to filters yet - we'll handle this in the pipeline
             else:
                 return jsonify({"error": "Invalid latitude, longitude, or radius values"}), 400
         except (ValueError, TypeError):
@@ -157,6 +161,18 @@ def get_shops(*args, **kwargs):
 
     # Make request
     shop_collection = auth.create_collection_connection("Shops")
+
+    # For geolocation queries, add location filter using $geoWithin
+    if use_geolocation:
+        # Add location filter - use $centerSphere for radius in radians
+        # Radius in radians = radius in meters / Earth radius in meters
+        radius_in_radians = geolocation_radius / 6378100
+
+        filters['location'] = {
+            '$geoWithin': {
+                '$centerSphere': [geolocation_coords, radius_in_radians]
+            }
+        }
 
     filtered_shop_count = shop_collection.count_documents(filters)
 
@@ -168,6 +184,67 @@ def get_shops(*args, **kwargs):
 
     pipeline = [
         {"$match": filters},
+    ]
+
+    # Add distance calculation if using geolocation
+    # mongo atlas doesn't support some $geo commands, followed implementation from youtube
+    if use_geolocation:
+        pipeline.extend([
+            {
+                "$addFields": {
+                    "distance": {
+                        "$let": {
+                            "vars": {
+                                "lon1": {"$arrayElemAt": ["$location.coordinates", 0]},
+                                "lat1": {"$arrayElemAt": ["$location.coordinates", 1]},
+                                "lon2": geolocation_coords[0],
+                                "lat2": geolocation_coords[1]
+                            },
+                            "in": {
+                                "$multiply": [
+                                    6371000,  # Earth radius in meters
+                                    {
+                                        "$acos": {
+                                            "$max": [
+                                                -1,
+                                                {
+                                                    "$min": [
+                                                        1,
+                                                        {
+                                                            "$add": [
+                                                                {
+                                                                    "$multiply": [
+                                                                        {"$sin": {"$degreesToRadians": "$$lat1"}},
+                                                                        {"$sin": {"$degreesToRadians": "$$lat2"}}
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "$multiply": [
+                                                                        {"$cos": {"$degreesToRadians": "$$lat1"}},
+                                                                        {"$cos": {"$degreesToRadians": "$$lat2"}},
+                                                                        {"$cos": {
+                                                                            "$degreesToRadians": {
+                                                                                "$subtract": ["$$lon2", "$$lon1"]}
+                                                                        }}
+                                                                    ]
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            {"$sort": {"distance": 1}}
+        ])
+
+    pipeline.extend([
         {"$skip": offset},
         {"$limit": per_page},
         {
@@ -216,17 +293,18 @@ def get_shops(*args, **kwargs):
                 "location": 1,
                 "avgScore": 1,
                 "reviewCount": 1,
-                "owner_id": 1,
-                "type": 1,
-                "deleted": 1,
+                "distance": 1  # Include distance if using geolocation
             }
         }
-    ]
+    ])
 
     shops = list(shop_collection.aggregate(pipeline))
 
     for shop in shops:
         shop["_id"] = str(shop["_id"])
+        # Remove distance field if not using geolocation
+        if not use_geolocation and "distance" in shop:
+            del shop["distance"]
 
     return jsonify({
         "shops": shops,
@@ -358,7 +436,13 @@ def update_shop(shop_id: str, *args, **kwargs):
         if location_corrections:
             corrections.extend(location_corrections)
         else:
-            updates["location"] = {"type": "Point", "coordinates": [float(long), float(lat)]}
+            # Ensure coordinates are stored as numbers, not strings
+            try:
+                long_float = float(long)
+                lat_float = float(lat)
+                updates["location"] = {"type": "Point", "coordinates": [long_float, lat_float]}
+            except (ValueError, TypeError):
+                corrections.append("Invalid latitude or longitude format")
 
     website = request.args.get('website')
     if website:
@@ -479,7 +563,7 @@ def delete_photo(shop_id: str, *args, **kwargs):
     if "photo" not in shop or shop["photo"] is None:
         return jsonify({"error": "No photo to delete"}), 404
 
-    # Remove the photo field - use $unset with empty string
+    # Remove the photo field
     shop_collection.update_one(
         {"_id": ObjectId(shop_id)},
         {"$unset": {"photo": ""}}
